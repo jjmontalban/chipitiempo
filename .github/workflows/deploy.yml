@@ -28,6 +28,6 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             php generate.php
-            cp -r /var/www/vhosts/chipitiempo/httpdocs/* /var/www/vhosts/default/chipitiempo/
+            cp -r /var/www/vhosts/chipitiempo/httpdocs/* /var/www/vhosts/chipitiempo/
             echo "Deployment completed"
           ENDSSH
