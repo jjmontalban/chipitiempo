@@ -1,15 +1,17 @@
 <?php
 
 /**
- * AUXIO - Fuente AEMET: avisos de fenómenos meteorológicos adversos via CAP
+ * ChipiTiempo - Fuente AEMET: avisos meteorológicos y previsión horaria
  */
 
 require_once __DIR__ . '/../Alert.php';
+require_once __DIR__ . '/../HourlyForecast.php';
 
 class AEMETSource {
     private const API_KEY = null;  // Se lee de ENV
     private const BASE_URL = "https://opendata.aemet.es/opendata";
     private const ENDPOINT = "/api/avisos_cap/ultimoelaborado/area/{area}";
+    private const HOURLY_ENDPOINT = "/api/prediccion/especifica/municipio/horaria/{municipio}";
     private const CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2";
 
     private const SEVERITY_MAP = [
@@ -308,6 +310,174 @@ class AEMETSource {
             }
         }
         return array_values($grouped);
+    }
+
+    /**
+     * Obtener la URL de datos para previsión horaria de un municipio
+     */
+    private static function getHourlyDataUrl(string $municipioId): string {
+        $url = self::BASE_URL . str_replace("{municipio}", $municipioId, self::HOURLY_ENDPOINT);
+        $body = json_decode(self::request($url), true);
+
+        if (!isset($body['datos'])) {
+            throw new Exception("AEMET hourly response missing 'datos' field");
+        }
+        return $body['datos'];
+    }
+
+    /**
+     * Obtener previsión horaria para un municipio
+     *
+     * @param string $municipioId Código INE del municipio (ej: "11016" para Chipiona)
+     * @return array{name: string, province: string, issued: string, hours: HourlyForecast[]}
+     */
+    public static function fetchHourlyForecast(string $municipioId = '11016'): array {
+        $apiKey = self::getApiKey();
+        if (empty($apiKey)) {
+            echo "[aemet] AEMET_API_KEY not set, skipping hourly forecast.\n";
+            return ['name' => '', 'province' => '', 'issued' => '', 'hours' => []];
+        }
+
+        try {
+            $datosUrl = self::getHourlyDataUrl($municipioId);
+            $rawData = self::request($datosUrl);
+
+            $json = json_decode($rawData, true);
+            if (json_last_error() !== JSON_ERROR_NONE || !is_array($json) || empty($json)) {
+                throw new Exception("Invalid JSON response from hourly forecast");
+            }
+
+            $data = $json[0] ?? [];
+            $name = $data['nombre'] ?? '';
+            $province = $data['provincia'] ?? '';
+            $issued = $data['elaborado'] ?? '';
+            $days = $data['prediccion']['dia'] ?? [];
+
+            $hours = [];
+            foreach ($days as $day) {
+                $fecha = $day['fecha'] ?? '';
+                // Extraer la fecha base (YYYY-MM-DD)
+                $dateBase = substr($fecha, 0, 10);
+
+                // Indexar temperatura por periodo
+                $temps = self::indexByPeriod($day['temperatura'] ?? []);
+                $feels = self::indexByPeriod($day['sensTermica'] ?? []);
+                $humidity = self::indexByPeriod($day['humedadRelativa'] ?? []);
+                $precip = self::indexByPeriod($day['precipitacion'] ?? []);
+                $sky = self::indexByPeriod($day['estadoCielo'] ?? []);
+
+                // Probabilidad de precipitación (puede venir en periodos de 6h)
+                $precipProb = self::indexPrecipProb($day['probPrecipitacion'] ?? []);
+
+                // Viento y rachas (alternado en vientoAndRachaMax)
+                $wind = self::indexWind($day['vientoAndRachaMax'] ?? []);
+
+                // Generar un HourlyForecast por cada hora que tenga temperatura
+                foreach ($temps as $periodo => $tempVal) {
+                    $hour = str_pad($periodo, 2, '0', STR_PAD_LEFT);
+                    $datetime = "{$dateBase}T{$hour}:00:00";
+
+                    $skyEntry = $sky[$periodo] ?? null;
+
+                    $hours[] = new HourlyForecast(
+                        datetime: $datetime,
+                        temperature: $tempVal !== null ? (int)$tempVal : null,
+                        feelsLike: isset($feels[$periodo]) ? (int)$feels[$periodo] : null,
+                        humidity: isset($humidity[$periodo]) ? (int)$humidity[$periodo] : null,
+                        precipProb: $precipProb[$periodo] ?? null,
+                        precipAmount: $precip[$periodo] ?? null,
+                        windDir: $wind[$periodo]['dir'] ?? null,
+                        windSpeed: $wind[$periodo]['speed'] ?? null,
+                        windGust: $wind[$periodo]['gust'] ?? null,
+                        skyDescription: is_array($skyEntry) ? ($skyEntry['descripcion'] ?? null) : null,
+                        skyCode: is_array($skyEntry) ? ($skyEntry['value'] ?? null) : (($skyEntry !== null) ? (string)$skyEntry : null),
+                    );
+                }
+            }
+
+            return [
+                'name' => $name,
+                'province' => $province,
+                'issued' => $issued,
+                'hours' => $hours,
+            ];
+        } catch (Exception $exc) {
+            echo "[aemet] Error fetching hourly forecast: {$exc->getMessage()}\n";
+            return ['name' => '', 'province' => '', 'issued' => '', 'hours' => []];
+        }
+    }
+
+    /**
+     * Indexar array de datos por periodo (campo "periodo" → campo "value")
+     */
+    private static function indexByPeriod(array $entries): array {
+        $indexed = [];
+        foreach ($entries as $entry) {
+            $periodo = $entry['periodo'] ?? null;
+            if ($periodo === null || $periodo === '') continue;
+            // Para estadoCielo, guardar el objeto completo (tiene descripcion)
+            if (isset($entry['descripcion'])) {
+                $indexed[$periodo] = $entry;
+            } else {
+                $val = $entry['value'] ?? null;
+                $indexed[$periodo] = ($val !== null && $val !== '' && $val !== 'Ip') ? $val : '0';
+            }
+        }
+        return $indexed;
+    }
+
+    /**
+     * Indexar probabilidad de precipitación expandiendo rangos de 6h a horas individuales
+     */
+    private static function indexPrecipProb(array $entries): array {
+        $indexed = [];
+        foreach ($entries as $entry) {
+            $periodo = $entry['periodo'] ?? '';
+            $val = $entry['value'] ?? null;
+            $prob = ($val !== null && $val !== '') ? (int)$val : 0;
+
+            if (strlen($periodo) <= 2) {
+                // Periodo individual (ej: "00", "01")
+                $indexed[(int)$periodo] = $prob;
+            } else {
+                // Rango de 6h (ej: "0006", "0612")
+                $start = (int)substr($periodo, 0, 2);
+                $end = (int)substr($periodo, 2, 2);
+                for ($h = $start; $h < $end; $h++) {
+                    $indexed[$h] = $prob;
+                }
+            }
+        }
+        return $indexed;
+    }
+
+    /**
+     * Indexar viento desde vientoAndRachaMax (alterna viento y racha)
+     */
+    private static function indexWind(array $entries): array {
+        $indexed = [];
+        foreach ($entries as $entry) {
+            $periodo = (int)($entry['periodo'] ?? 0);
+            $dir = $entry['direccion'] ?? '';
+            $speed = $entry['velocidad'] ?? '';
+            $gust = $entry['value'] ?? '';
+
+            if ($dir !== '' && $speed !== '') {
+                // Entrada de viento
+                if (!isset($indexed[$periodo])) {
+                    $indexed[$periodo] = ['dir' => null, 'speed' => null, 'gust' => null];
+                }
+                $indexed[$periodo]['dir'] = $dir;
+                $indexed[$periodo]['speed'] = (int)$speed;
+            } elseif ($gust !== '') {
+                // Entrada de racha máxima
+                if (!isset($indexed[$periodo])) {
+                    $indexed[$periodo] = ['dir' => null, 'speed' => null, 'gust' => null];
+                }
+                $indexed[$periodo]['gust'] = (int)$gust;
+            }
+        }
+        return $indexed;
     }
 
     /**

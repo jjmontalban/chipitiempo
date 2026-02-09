@@ -1,19 +1,22 @@
 <?php
 
 /**
- * AUXIO - API REST para acceso a alertas en JSON
- * 
+ * ChipiTiempo - API REST para previsión horaria y alertas
+ *
  * Endpoints:
- *   GET /api.php?action=alerts              - Todas las alertas
- *   GET /api.php?action=alerts&severity=red - Por severidad
- *   GET /api.php?action=alerts&source=ign   - Por fuente
- *   GET /api.php?action=health              - Status API
+ *   GET /api.php?action=forecast                      - Previsión horaria (Chipiona)
+ *   GET /api.php?action=forecast&municipality=Rota    - Previsión por municipio
+ *   GET /api.php?action=alerts                        - Todas las alertas
+ *   GET /api.php?action=alerts&severity=red           - Por severidad
+ *   GET /api.php?action=alerts&source=ign             - Por fuente
+ *   GET /api.php?action=health                        - Status API
  */
 
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 
 require_once __DIR__ . '/src/Alert.php';
+require_once __DIR__ . '/src/HourlyForecast.php';
 require_once __DIR__ . '/src/Generator.php';
 
 // Cargar variables de entorno
@@ -39,6 +42,25 @@ try {
     $action = getParam('action', 'alerts');
 
     switch ($action) {
+        case 'forecast':
+            $municipality = getParam('municipality', 'Chipiona');
+            $forecast = AlertGenerator::collectForecast($municipality);
+
+            $hoursData = array_map(
+                fn(HourlyForecast $h) => $h->toArray(),
+                $forecast['hours'] ?? []
+            );
+
+            returnJSON([
+                'success' => true,
+                'timestamp' => date('Y-m-d H:i:s') . ' UTC',
+                'municipality' => $forecast['name'] ?? $municipality,
+                'province' => $forecast['province'] ?? '',
+                'issued' => $forecast['issued'] ?? '',
+                'count' => count($hoursData),
+                'hours' => $hoursData,
+            ]);
+
         case 'alerts':
             // Recopilar todas las alertas
             $alerts = AlertGenerator::collectAlerts();
@@ -93,7 +115,7 @@ try {
             returnJSON([
                 'success' => false,
                 'error' => "Unknown action: {$action}",
-                'available_actions' => ['alerts', 'health'],
+                'available_actions' => ['forecast', 'alerts', 'health'],
             ], 400);
     }
 
