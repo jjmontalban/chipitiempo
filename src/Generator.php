@@ -382,7 +382,7 @@ $alertsHtml
 
 <h3>DANA / INUNDACIONES</h3>
 <ul>
-<li>NO cruces zonas inundadas a pie ni en vehículo</li>
+<li>NO cruce zonas inundadas a pie ni en vehículo</li>
 <li>Alójate de barrancos, ramblas y cauces secos</li>
 <li>Si estás en un vehículo y empieza a flotar, ABANDÓNALO</li>
 <li>Busca terreno elevado</li>
