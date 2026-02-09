@@ -343,8 +343,11 @@ class AEMETSource {
             $rawData = self::request($datosUrl);
 
             $json = json_decode($rawData, true);
-            if (json_last_error() !== JSON_ERROR_NONE || !is_array($json) || empty($json)) {
-                throw new Exception("Invalid JSON response from hourly forecast");
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception("Invalid JSON: " . json_last_error_msg() . " - raw: " . substr($rawData, 0, 200));
+            }
+            if (!is_array($json) || empty($json)) {
+                throw new Exception("Empty or non-array JSON response");
             }
 
             $data = $json[0] ?? [];
@@ -352,6 +355,7 @@ class AEMETSource {
             $province = $data['provincia'] ?? '';
             $issued = $data['elaborado'] ?? '';
             $days = $data['prediccion']['dia'] ?? [];
+            echo "[aemet] Forecast for {$name} ({$province}), issued: {$issued}, days: " . count($days) . "\n";
 
             $hours = [];
             foreach ($days as $day) {
@@ -369,8 +373,9 @@ class AEMETSource {
                 // Probabilidad de precipitación (puede venir en periodos de 6h)
                 $precipProb = self::indexPrecipProb($day['probPrecipitacion'] ?? []);
 
-                // Viento y rachas (alternado en vientoAndRachaMax)
-                $wind = self::indexWind($day['vientoAndRachaMax'] ?? []);
+                // Viento (campo separado) y rachas máximas (campo separado)
+                $wind = self::indexWind($day['viento'] ?? []);
+                $gusts = self::indexGust($day['rachaMax'] ?? []);
 
                 // Generar un HourlyForecast por cada hora que tenga temperatura
                 foreach ($temps as $periodo => $tempVal) {
@@ -388,7 +393,7 @@ class AEMETSource {
                         precipAmount: $precip[$periodo] ?? null,
                         windDir: $wind[$periodo]['dir'] ?? null,
                         windSpeed: $wind[$periodo]['speed'] ?? null,
-                        windGust: $wind[$periodo]['gust'] ?? null,
+                        windGust: $gusts[$periodo] ?? null,
                         skyDescription: is_array($skyEntry) ? ($skyEntry['descripcion'] ?? null) : null,
                         skyCode: is_array($skyEntry) ? ($skyEntry['value'] ?? null) : (($skyEntry !== null) ? (string)$skyEntry : null),
                     );
@@ -427,7 +432,8 @@ class AEMETSource {
     }
 
     /**
-     * Indexar probabilidad de precipitación expandiendo rangos de 6h a horas individuales
+     * Indexar probabilidad de precipitación expandiendo rangos a horas individuales
+     * Soporta periodos: "00" (individual), "0006" (concatenado), "00-06" (con guion)
      */
     private static function indexPrecipProb(array $entries): array {
         $indexed = [];
@@ -436,45 +442,71 @@ class AEMETSource {
             $val = $entry['value'] ?? null;
             $prob = ($val !== null && $val !== '') ? (int)$val : 0;
 
-            if (strlen($periodo) <= 2) {
-                // Periodo individual (ej: "00", "01")
-                $indexed[(int)$periodo] = $prob;
-            } else {
-                // Rango de 6h (ej: "0006", "0612")
+            if (strpos($periodo, '-') !== false) {
+                // Rango con guion (ej: "00-06", "06-12")
+                $parts = explode('-', $periodo);
+                $start = (int)$parts[0];
+                $end = (int)$parts[1];
+                for ($h = $start; $h < $end; $h++) {
+                    $indexed[$h] = $prob;
+                }
+            } elseif (strlen($periodo) > 2) {
+                // Rango concatenado (ej: "0006", "0612")
                 $start = (int)substr($periodo, 0, 2);
                 $end = (int)substr($periodo, 2, 2);
                 for ($h = $start; $h < $end; $h++) {
                     $indexed[$h] = $prob;
                 }
+            } else {
+                // Periodo individual (ej: "00", "01")
+                $indexed[(int)$periodo] = $prob;
             }
         }
         return $indexed;
     }
 
     /**
-     * Indexar viento desde vientoAndRachaMax (alterna viento y racha)
+     * Indexar viento desde campo "viento" (direccion, velocidad, periodo)
      */
     private static function indexWind(array $entries): array {
         $indexed = [];
         foreach ($entries as $entry) {
-            $periodo = (int)($entry['periodo'] ?? 0);
+            $periodo = $entry['periodo'] ?? '';
+            if ($periodo === '') continue;
             $dir = $entry['direccion'] ?? '';
             $speed = $entry['velocidad'] ?? '';
-            $gust = $entry['value'] ?? '';
+            if ($dir !== '' || $speed !== '') {
+                $indexed[(int)$periodo] = [
+                    'dir' => $dir !== '' ? $dir : null,
+                    'speed' => $speed !== '' ? (int)$speed : null,
+                ];
+            }
+        }
+        return $indexed;
+    }
 
-            if ($dir !== '' && $speed !== '') {
-                // Entrada de viento
-                if (!isset($indexed[$periodo])) {
-                    $indexed[$periodo] = ['dir' => null, 'speed' => null, 'gust' => null];
+    /**
+     * Indexar rachas máximas desde campo "rachaMax" (value, periodo)
+     * El periodo puede ser individual ("00") o rango ("00-06")
+     */
+    private static function indexGust(array $entries): array {
+        $indexed = [];
+        foreach ($entries as $entry) {
+            $periodo = $entry['periodo'] ?? '';
+            $val = $entry['value'] ?? '';
+            if ($val === '' || $periodo === '') continue;
+            $gust = (int)$val;
+
+            if (strpos($periodo, '-') !== false) {
+                // Rango (ej: "00-06", "06-12")
+                $parts = explode('-', $periodo);
+                $start = (int)$parts[0];
+                $end = (int)$parts[1];
+                for ($h = $start; $h < $end; $h++) {
+                    $indexed[$h] = $gust;
                 }
-                $indexed[$periodo]['dir'] = $dir;
-                $indexed[$periodo]['speed'] = (int)$speed;
-            } elseif ($gust !== '') {
-                // Entrada de racha máxima
-                if (!isset($indexed[$periodo])) {
-                    $indexed[$periodo] = ['dir' => null, 'speed' => null, 'gust' => null];
-                }
-                $indexed[$periodo]['gust'] = (int)$gust;
+            } else {
+                $indexed[(int)$periodo] = $gust;
             }
         }
         return $indexed;

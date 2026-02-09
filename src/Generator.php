@@ -282,9 +282,16 @@ class AlertGenerator {
             $location .= " ({$province})";
         }
 
+        // Filtrar: solo horas desde la hora actual en adelante
+        $nowIso = date('Y-m-d\TH:') . '00:00';
+        $filtered = array_filter($hours, fn($h) => $h->datetime >= $nowIso);
+        if (empty($filtered)) {
+            $filtered = $hours; // fallback: mostrar todo si no hay horas futuras
+        }
+
         // Agrupar horas por día
         $byDay = [];
-        foreach ($hours as $h) {
+        foreach ($filtered as $h) {
             $date = substr($h->datetime, 0, 10);
             $byDay[$date][] = $h;
         }
@@ -293,33 +300,53 @@ class AlertGenerator {
 
         foreach ($byDay as $date => $dayHours) {
             $dayLabel = self::formatDateLabel($date);
-            $html .= "<h3>{$dayLabel}</h3>\n";
+
+            // Calcular máxima y mínima del día
+            $temps = array_filter(array_map(fn($h) => $h->temperature, $dayHours), fn($t) => $t !== null);
+            $maxTemp = !empty($temps) ? max($temps) : null;
+            $minTemp = !empty($temps) ? min($temps) : null;
+
+            $tempRange = '';
+            if ($maxTemp !== null && $minTemp !== null) {
+                $tempRange = " &mdash; M&iacute;n: {$minTemp}&deg; / M&aacute;x: {$maxTemp}&deg;";
+            }
+
+            $html .= "<h3>{$dayLabel}{$tempRange}</h3>\n";
             $html .= "<div class=\"forecast-scroll\"><table class=\"forecast\">\n";
-            $html .= "<tr><th>Hora</th><th>&deg;C</th><th>Sens.</th><th>Viento</th><th>Lluvia</th><th>Cielo</th></tr>\n";
+            $html .= "<tr><th>Hora</th><th>&deg;C</th><th>Sens.</th><th>Viento</th><th>Prob.</th><th>Lluvia</th><th>Cielo</th></tr>\n";
 
             foreach ($dayHours as $h) {
                 $hour = substr($h->datetime, 11, 5);
                 $temp = $h->temperature !== null ? "{$h->temperature}&deg;" : '-';
                 $feels = $h->feelsLike !== null ? "{$h->feelsLike}&deg;" : '-';
 
+                // Viento: dirección + velocidad en km/h
                 $windStr = '-';
                 if ($h->windDir !== null && $h->windSpeed !== null) {
                     $arrow = $h->windArrow();
-                    $windStr = "{$arrow} {$h->windDir} {$h->windSpeed}";
+                    $windStr = "{$arrow} {$h->windDir} {$h->windSpeed} km/h";
                     if ($h->windGust !== null && $h->windGust > $h->windSpeed) {
-                        $windStr .= " <small>(r.{$h->windGust})</small>";
+                        $windStr .= " <small>(racha {$h->windGust})</small>";
                     }
                 }
 
-                $rain = $h->precipProb !== null ? "{$h->precipProb}%" : '-';
+                // Probabilidad de lluvia
+                $rainProb = $h->precipProb !== null ? "{$h->precipProb}%" : '-';
+
+                // Cantidad de lluvia: mostrar solo si hay probabilidad > 0
+                $rainAmount = '-';
+                if ($h->precipProb !== null && $h->precipProb > 0 && $h->precipAmount !== null && $h->precipAmount !== '0') {
+                    $rainAmount = "{$h->precipAmount} mm";
+                }
+
                 $sky = $h->skyDescription ? htmlspecialchars($h->skyDescription, ENT_QUOTES, 'UTF-8') : '-';
 
                 // Resaltar lluvia alta
-                $rainClass = '';
+                $probClass = '';
                 if ($h->precipProb !== null && $h->precipProb >= 60) {
-                    $rainClass = ' class="rain-high"';
+                    $probClass = ' class="rain-high"';
                 } elseif ($h->precipProb !== null && $h->precipProb >= 30) {
-                    $rainClass = ' class="rain-med"';
+                    $probClass = ' class="rain-med"';
                 }
 
                 $html .= "<tr>";
@@ -327,7 +354,8 @@ class AlertGenerator {
                 $html .= "<td>{$temp}</td>";
                 $html .= "<td>{$feels}</td>";
                 $html .= "<td>{$windStr}</td>";
-                $html .= "<td{$rainClass}>{$rain}</td>";
+                $html .= "<td{$probClass}>{$rainProb}</td>";
+                $html .= "<td>{$rainAmount}</td>";
                 $html .= "<td>{$sky}</td>";
                 $html .= "</tr>\n";
             }
