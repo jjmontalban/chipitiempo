@@ -324,8 +324,8 @@ HTML;
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="AUXIO - Información de emergencias para España">
-<title>AUXIO - Emergencias España</title>
+<meta name="description" content="CHIPITIEMPO - Información del tiempo para Chipiona">
+<title>CHIPITIEMPO - El tiempo en Chipiona</title>
 <style>
 body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
 h1, h2, h3 { color: #333; }
@@ -341,9 +341,9 @@ small { color: #666; }
 </head>
 <body>
 
-<h1>Emergencias España</h1>
+<h1>CHIPITIEMPO - El tiempo en Chipiona</h1>
 
-<p><strong>Información crítica para conexiones lentas.</strong></p>
+<p><strong>Información meteorológica.</strong></p>
 <p><em>Fecha act: $now</em></p>
 
 <hr>
@@ -373,12 +373,6 @@ $alertsHtml
 <li><strong>062</strong> - Guardia Civil - <a href="tel:062">Llamar</a></li>
 <li><strong>080/085</strong> - Bomberos (varía por comunidad) - <a href="tel:080">Llamar</a></li>
 <li><strong>061</strong> - Urgencias Sanitarias - <a href="tel:061">Llamar</a></li>
-</ul>
-
-<h3>Emergencias Especializadas</h3>
-<ul>
-<li><strong>016</strong> - Violencia de Género (no deja rastro en factura) - <a href="tel:016">Llamar</a></li>
-<li><strong>024</strong> - Atención a la Conducta Suicida - <a href="tel:024">Llamar</a></li>
 <li><strong>915 620 420</strong> - Servicio de Información Toxicológica - <a href="tel:915620420">Llamar</a></li>
 </ul>
 
