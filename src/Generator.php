@@ -268,11 +268,8 @@ class AlertGenerator {
             $location .= " ({$province})";
         }
 
-        // Generar selector de municipios
-        $selectorHtml = self::renderForecastMunicipalitySelector($name ?: self::DEFAULT_MUNICIPALITY);
-
         if (empty($hours)) {
-            return "<h2>PREVISI&Oacute;N HORARIA</h2>\n{$selectorHtml}\n<div id=\"forecast-content\"><p>No hay datos de previsi&oacute;n disponibles.</p></div>\n";
+            return "<h2>PREVISI&Oacute;N HORARIA</h2>\n<span id=\"forecast-loading\" style=\"display:none\">&#x23F3; Cargando...</span>\n<div id=\"forecast-content\"><p>No hay datos de previsi&oacute;n disponibles.</p></div>\n";
         }
 
         // Filtrar: solo horas desde la hora actual en adelante
@@ -290,7 +287,7 @@ class AlertGenerator {
         }
 
         $html = "<h2>PREVISI&Oacute;N HORARIA &mdash; {$location}</h2>\n";
-        $html .= $selectorHtml;
+        $html .= "<span id=\"forecast-loading\" style=\"display:none\">&#x23F3; Cargando...</span>\n";
         $html .= "<div id=\"forecast-content\">\n";
 
         foreach ($byDay as $date => $dayHours) {
@@ -358,28 +355,6 @@ class AlertGenerator {
 
         $html .= "</div>\n"; // Close forecast-content div
 
-        return $html;
-    }
-
-    /**
-     * Generar selector de municipios para previsión horaria
-     */
-    public static function renderForecastMunicipalitySelector(string $currentMunicipality = null): string {
-        $currentMunicipality = $currentMunicipality ?? self::DEFAULT_MUNICIPALITY;
-        
-        $html = "<div class=\"forecast-selector\">\n<strong>Seleccionar municipio:</strong> ";
-        $html .= "<select id=\"municipality-select\" onchange=\"loadForecast(this.value)\">\n";
-        
-        foreach (self::CADIZ_MUNICIPALITIES as $munic) {
-            $municSafe = htmlspecialchars($munic, ENT_QUOTES, 'UTF-8');
-            $selected = ($munic === $currentMunicipality) ? ' selected' : '';
-            $html .= "<option value=\"{$municSafe}\"{$selected}>{$municSafe}</option>\n";
-        }
-        
-        $html .= "</select>\n";
-        $html .= "<span id=\"forecast-loading\" style=\"display:none; margin-left: 10px;\">⏳ Cargando...</span>\n";
-        $html .= "</div>\n";
-        
         return $html;
     }
 
@@ -523,7 +498,7 @@ HTML;
         $filterHtml = self::renderProvinceFilter();
         $municFilterHtml = self::renderMunicipalityFilter();
         $alertsHtml = self::renderAlertsSection($alerts);
-        $weatherHtml = !empty($forecast) ? self::renderWeatherSection($forecast) : '';
+        $weatherHtml = self::renderWeatherSection($forecast);
 
         return <<<HTML
 <!DOCTYPE html>
@@ -544,8 +519,6 @@ small { color: #666; }
 .prov-filter a { white-space: nowrap; }
 .munic-filter { margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 4px; line-height: 2; border-left: 4px solid #0066cc; }
 .munic-filter a { white-space: nowrap; }
-.forecast-selector { margin: 15px 0; padding: 10px; background: #e8f5e9; border-radius: 4px; border-left: 4px solid #4caf50; }
-.forecast-selector select { padding: 5px 10px; font-size: 14px; border: 1px solid #4caf50; border-radius: 3px; }
 .forecast-scroll { overflow-x: auto; }
 .forecast { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 14px; }
 .forecast th { background: #2c3e50; color: #fff; padding: 6px 8px; text-align: left; white-space: nowrap; }
@@ -680,6 +653,8 @@ function fm(munic) {
     for (var i = 0; i < links.length; i++) {
         links[i].style.fontWeight = (links[i].getAttribute('data-munic') === (munic || '')) ? 'bold' : 'normal';
     }
+    // Cargar previsión del municipio seleccionado (o Chipiona por defecto)
+    loadForecast(munic || 'Chipiona');
 }
 
 // Función para cargar la previsión de un municipio
