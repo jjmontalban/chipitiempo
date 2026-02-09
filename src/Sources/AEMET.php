@@ -81,16 +81,25 @@ class AEMETSource {
      */
     private static function extractTar(string $data, bool $gzipped): array {
         $xmlFiles = [];
-        $tmpFile = tempnam(sys_get_temp_dir(), 'aemet_');
-        $tmpDir = $tmpFile . '_dir';
+        $tmpBase = tempnam(sys_get_temp_dir(), 'aemet_');
+        // PharData requires correct file extension to detect compression format
+        $extension = $gzipped ? '.tar.gz' : '.tar';
+        $tmpFile = $tmpBase . $extension;
+        @unlink($tmpBase); // Remove the original temp file (we'll use the renamed one)
+        $tmpDir = $tmpBase . '_dir';
 
         try {
             file_put_contents($tmpFile, $data);
             mkdir($tmpDir, 0755, true);
 
-            // Use PharData for cross-platform tar extraction (works on Windows too)
             try {
                 $phar = new PharData($tmpFile);
+                // For .tar.gz, decompress first then extract
+                if ($gzipped) {
+                    $tarFile = $tmpBase . '.tar';
+                    $phar->decompress();
+                    $phar = new PharData($tarFile);
+                }
                 $phar->extractTo($tmpDir);
             } catch (Exception $e) {
                 throw new Exception("Failed to extract tar archive: " . $e->getMessage());
@@ -107,6 +116,10 @@ class AEMETSource {
             }
         } finally {
             @unlink($tmpFile);
+            // Also clean up the decompressed .tar file if it exists
+            if ($gzipped) {
+                @unlink($tmpBase . '.tar');
+            }
             if (is_dir($tmpDir)) {
                 $delIterator = new RecursiveIteratorIterator(
                     new RecursiveDirectoryIterator($tmpDir, RecursiveDirectoryIterator::SKIP_DOTS),

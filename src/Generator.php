@@ -308,35 +308,33 @@ class AlertGenerator {
 
             $html .= "<h3>{$dayLabel}{$tempRange}</h3>\n";
             $html .= "<div class=\"forecast-scroll\"><table class=\"forecast\">\n";
-            $html .= "<tr><th>Hora</th><th>&deg;C</th><th>Sens.</th><th>Viento</th><th>Prob.</th><th>Lluvia</th><th>Cielo</th></tr>\n";
+            $html .= "<tr><th>Hora</th><th>Temperatura</th><th>Sens. t&eacute;rmica</th><th>Prob. precip. (%)</th><th>Precipitaci&oacute;n</th><th>Dir. viento</th><th>Vel. viento (km/h)</th></tr>\n";
 
             foreach ($dayHours as $h) {
                 $hour = substr($h->datetime, 11, 5);
-                $temp = $h->temperature !== null ? "{$h->temperature}&deg;" : '-';
-                $feels = $h->feelsLike !== null ? "{$h->feelsLike}&deg;" : '-';
+                $temp = $h->temperature !== null ? "{$h->temperature}&deg;C" : '-';
+                $feels = $h->feelsLike !== null ? "{$h->feelsLike}&deg;C" : '-';
 
-                // Viento: dirección + velocidad en km/h
-                $windStr = '-';
-                if ($h->windDir !== null && $h->windSpeed !== null) {
-                    $arrow = $h->windArrow();
-                    $windStr = "{$arrow} {$h->windDir} {$h->windSpeed} km/h";
-                    if ($h->windGust !== null && $h->windGust > $h->windSpeed) {
-                        $windStr .= " <small>(racha {$h->windGust})</small>";
-                    }
-                }
-
-                // Probabilidad de lluvia
+                // Probabilidad de precipitación
                 $rainProb = $h->precipProb !== null ? "{$h->precipProb}%" : '-';
 
-                // Cantidad de lluvia: mostrar solo si hay probabilidad > 0
+                // Cantidad de precipitación
                 $rainAmount = '-';
-                if ($h->precipProb !== null && $h->precipProb > 0 && $h->precipAmount !== null && $h->precipAmount !== '0') {
+                if ($h->precipAmount !== null && $h->precipAmount !== '0') {
                     $rainAmount = "{$h->precipAmount} mm";
                 }
 
-                $sky = $h->skyDescription ? htmlspecialchars($h->skyDescription, ENT_QUOTES, 'UTF-8') : '-';
+                // Dirección del viento
+                $windDirStr = '-';
+                if ($h->windDir !== null) {
+                    $arrow = $h->windArrow();
+                    $windDirStr = "{$arrow} {$h->windDir}";
+                }
 
-                // Resaltar lluvia alta
+                // Velocidad del viento
+                $windSpeedStr = $h->windSpeed !== null ? "{$h->windSpeed}" : '-';
+
+                // Resaltar probabilidad de precipitación alta
                 $probClass = '';
                 if ($h->precipProb !== null && $h->precipProb >= 60) {
                     $probClass = ' class="rain-high"';
@@ -348,10 +346,10 @@ class AlertGenerator {
                 $html .= "<td><strong>{$hour}</strong></td>";
                 $html .= "<td>{$temp}</td>";
                 $html .= "<td>{$feels}</td>";
-                $html .= "<td>{$windStr}</td>";
                 $html .= "<td{$probClass}>{$rainProb}</td>";
                 $html .= "<td>{$rainAmount}</td>";
-                $html .= "<td>{$sky}</td>";
+                $html .= "<td>{$windDirStr}</td>";
+                $html .= "<td>{$windSpeedStr}</td>";
                 $html .= "</tr>\n";
             }
 
@@ -777,46 +775,44 @@ function renderForecastTable(hours) {
         
         html += '<h3>' + dayLabel + tempRange + '</h3>\n';
         html += '<div class="forecast-scroll"><table class="forecast">\n';
-        html += '<tr><th>Hora</th><th>°C</th><th>Sens.</th><th>Viento</th><th>Prob.</th><th>Lluvia</th><th>Cielo</th></tr>\n';
-        
+        html += '<tr><th>Hora</th><th>Temperatura</th><th>Sens. t\u00e9rmica</th><th>Prob. precip. (%)</th><th>Precipitaci\u00f3n</th><th>Dir. viento</th><th>Vel. viento (km/h)</th></tr>\n';
+
+        var arrows = {'N':'\u2191','NE':'\u2197','E':'\u2192','SE':'\u2198','S':'\u2193','SO':'\u2199','O':'\u2190','NO':'\u2196','C':'\u25CB'};
+
         dayHours.forEach(function(h) {
             var hour = h.datetime.substr(11, 5);
-            var temp = h.temperature !== null ? h.temperature + '°' : '-';
-            var feels = h.feels_like !== null ? h.feels_like + '°' : '-';
-            
-            var windStr = '-';
-            if (h.wind_dir && h.wind_speed !== null) {
-                var arrows = {'N':'↑','NE':'↗','E':'→','SE':'↘','S':'↓','SO':'↙','O':'←','NO':'↖','C':'○'};
-                var arrow = arrows[h.wind_dir] || '';
-                windStr = arrow + ' ' + h.wind_dir + ' ' + h.wind_speed + ' km/h';
-                if (h.wind_gust && h.wind_gust > h.wind_speed) {
-                    windStr += ' <small>(racha ' + h.wind_gust + ')</small>';
-                }
-            }
-            
+            var temp = h.temperature !== null ? h.temperature + '\u00b0C' : '-';
+            var feels = h.feels_like !== null ? h.feels_like + '\u00b0C' : '-';
+
             var rainProb = h.precip_prob !== null ? h.precip_prob + '%' : '-';
             var rainAmount = '-';
-            if (h.precip_prob > 0 && h.precip_amount && h.precip_amount !== '0') {
+            if (h.precip_amount && h.precip_amount !== '0') {
                 rainAmount = h.precip_amount + ' mm';
             }
-            
-            var sky = h.sky_description || '-';
-            
+
+            var windDirStr = '-';
+            if (h.wind_dir) {
+                var arrow = arrows[h.wind_dir] || '';
+                windDirStr = arrow + ' ' + h.wind_dir;
+            }
+
+            var windSpeedStr = h.wind_speed !== null ? '' + h.wind_speed : '-';
+
             var probClass = '';
             if (h.precip_prob >= 60) {
                 probClass = ' class="rain-high"';
             } else if (h.precip_prob >= 30) {
                 probClass = ' class="rain-med"';
             }
-            
+
             html += '<tr>';
             html += '<td><strong>' + hour + '</strong></td>';
             html += '<td>' + temp + '</td>';
             html += '<td>' + feels + '</td>';
-            html += '<td>' + windStr + '</td>';
             html += '<td' + probClass + '>' + rainProb + '</td>';
             html += '<td>' + rainAmount + '</td>';
-            html += '<td>' + sky + '</td>';
+            html += '<td>' + windDirStr + '</td>';
+            html += '<td>' + windSpeedStr + '</td>';
             html += '</tr>\n';
         });
         

@@ -14,18 +14,7 @@
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 
-require_once __DIR__ . '/src/Alert.php';
-require_once __DIR__ . '/src/HourlyForecast.php';
-require_once __DIR__ . '/src/Generator.php';
-
-// Cargar variables de entorno
-if (file_exists(__DIR__ . '/.env')) {
-    $env = parse_ini_file(__DIR__ . '/.env');
-    foreach ($env as $key => $value) {
-        $_ENV[$key] = $value;
-        putenv("{$key}={$value}");
-    }
-}
+require_once __DIR__ . '/src/bootstrap.php';
 
 function returnJSON($data, int $code = 200): void {
     http_response_code($code);

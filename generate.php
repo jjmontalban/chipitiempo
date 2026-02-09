@@ -9,18 +9,7 @@
  *   php generate.php [output_file.html]
  */
 
-require_once __DIR__ . '/src/Alert.php';
-require_once __DIR__ . '/src/HourlyForecast.php';
-require_once __DIR__ . '/src/Generator.php';
-
-// Cargar variables de entorno
-if (file_exists(__DIR__ . '/.env')) {
-    $env = parse_ini_file(__DIR__ . '/.env');
-    foreach ($env as $key => $value) {
-        $_ENV[$key] = $value;
-        putenv("{$key}={$value}");
-    }
-}
+require_once __DIR__ . '/src/bootstrap.php';
 
 // Archivo de salida (default: index.html)
 $output = $argc > 1 ? $argv[1] : 'index.html';
