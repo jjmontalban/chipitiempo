@@ -725,7 +725,7 @@ function loadForecast(municipality) {
 
 // Función para renderizar la tabla de previsión
 function renderForecastTable(hours) {
-    var now = new Date().toISOString().substr(0, 13) + ':00:00';
+    var now = new Date().toISOString().substring(0, 13) + ':00:00';
     
     // Filtrar horas futuras
     var filtered = hours.filter(function(h) {
@@ -738,7 +738,7 @@ function renderForecastTable(hours) {
     // Agrupar por día
     var byDay = {};
     filtered.forEach(function(h) {
-        var date = h.datetime.substr(0, 10);
+        var date = h.datetime.substring(0, 10);
         if (!byDay[date]) {
             byDay[date] = [];
         }
@@ -747,8 +747,8 @@ function renderForecastTable(hours) {
     
     var html = '';
     var months = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-    var today = new Date().toISOString().substr(0, 10);
-    var tomorrow = new Date(Date.now() + 86400000).toISOString().substr(0, 10);
+    var today = new Date().toISOString().substring(0, 10);
+    var tomorrow = new Date(Date.now() + 86400000).toISOString().substring(0, 10);
     
     for (var date in byDay) {
         var dayHours = byDay[date];
@@ -780,7 +780,7 @@ function renderForecastTable(hours) {
         html += '<tr><th>Hora</th><th>°C</th><th>Sens.</th><th>Viento</th><th>Prob.</th><th>Lluvia</th><th>Cielo</th></tr>\n';
         
         dayHours.forEach(function(h) {
-            var hour = h.datetime.substr(11, 5);
+            var hour = h.datetime.substring(11, 16);
             var temp = h.temperature !== null ? h.temperature + '°' : '-';
             var feels = h.feels_like !== null ? h.feels_like + '°' : '-';
             
@@ -796,7 +796,7 @@ function renderForecastTable(hours) {
             
             var rainProb = h.precip_prob !== null ? h.precip_prob + '%' : '-';
             var rainAmount = '-';
-            if (h.precip_prob > 0 && h.precip_amount && h.precip_amount !== '0') {
+            if (h.precip_prob > 0 && h.precip_amount && h.precip_amount != '0') {
                 rainAmount = h.precip_amount + ' mm';
             }
             
