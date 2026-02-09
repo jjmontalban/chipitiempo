@@ -263,13 +263,16 @@ class AlertGenerator {
         $province = htmlspecialchars($forecast['province'] ?? '', ENT_QUOTES, 'UTF-8');
         $hours = $forecast['hours'] ?? [];
 
-        if (empty($hours)) {
-            return "<h2>PREVISI&Oacute;N HORARIA</h2>\n<p>No hay datos de previsi&oacute;n disponibles.</p>\n";
-        }
-
         $location = $name;
         if ($province) {
             $location .= " ({$province})";
+        }
+
+        // Generar selector de municipios
+        $selectorHtml = self::renderForecastMunicipalitySelector($name ?: self::DEFAULT_MUNICIPALITY);
+
+        if (empty($hours)) {
+            return "<h2>PREVISI&Oacute;N HORARIA</h2>\n{$selectorHtml}\n<div id=\"forecast-content\"><p>No hay datos de previsi&oacute;n disponibles.</p></div>\n";
         }
 
         // Filtrar: solo horas desde la hora actual en adelante
@@ -287,6 +290,8 @@ class AlertGenerator {
         }
 
         $html = "<h2>PREVISI&Oacute;N HORARIA &mdash; {$location}</h2>\n";
+        $html .= $selectorHtml;
+        $html .= "<div id=\"forecast-content\">\n";
 
         foreach ($byDay as $date => $dayHours) {
             $dayLabel = self::formatDateLabel($date);
@@ -353,6 +358,30 @@ class AlertGenerator {
             $html .= "</table></div>\n";
         }
 
+        $html .= "</div>\n"; // Close forecast-content div
+
+        return $html;
+    }
+
+    /**
+     * Generar selector de municipios para previsión horaria
+     */
+    public static function renderForecastMunicipalitySelector(string $currentMunicipality = null): string {
+        $currentMunicipality = $currentMunicipality ?? self::DEFAULT_MUNICIPALITY;
+        
+        $html = "<div class=\"forecast-selector\">\n<strong>Seleccionar municipio:</strong> ";
+        $html .= "<select id=\"municipality-select\" onchange=\"loadForecast(this.value)\">\n";
+        
+        foreach (self::CADIZ_MUNICIPALITIES as $munic) {
+            $municSafe = htmlspecialchars($munic, ENT_QUOTES, 'UTF-8');
+            $selected = ($munic === $currentMunicipality) ? ' selected' : '';
+            $html .= "<option value=\"{$municSafe}\"{$selected}>{$municSafe}</option>\n";
+        }
+        
+        $html .= "</select>\n";
+        $html .= "<span id=\"forecast-loading\" style=\"display:none; margin-left: 10px;\">⏳ Cargando...</span>\n";
+        $html .= "</div>\n";
+        
         return $html;
     }
 
@@ -517,6 +546,8 @@ small { color: #666; }
 .prov-filter a { white-space: nowrap; }
 .munic-filter { margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 4px; line-height: 2; border-left: 4px solid #0066cc; }
 .munic-filter a { white-space: nowrap; }
+.forecast-selector { margin: 15px 0; padding: 10px; background: #e8f5e9; border-radius: 4px; border-left: 4px solid #4caf50; }
+.forecast-selector select { padding: 5px 10px; font-size: 14px; border: 1px solid #4caf50; border-radius: 3px; }
 .forecast-scroll { overflow-x: auto; }
 .forecast { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 14px; }
 .forecast th { background: #2c3e50; color: #fff; padding: 6px 8px; text-align: left; white-space: nowrap; }
@@ -653,9 +684,151 @@ function fm(munic) {
     }
 }
 
-// Inicializar con Chipiona por defecto
+// Función para cargar la previsión de un municipio
+function loadForecast(municipality) {
+    var loadingSpan = document.getElementById('forecast-loading');
+    var contentDiv = document.getElementById('forecast-content');
+    
+    if (loadingSpan) loadingSpan.style.display = 'inline';
+    
+    // Llamar a la API para obtener la previsión
+    var apiUrl = 'api.php?action=forecast&municipality=' + encodeURIComponent(municipality);
+    
+    fetch(apiUrl)
+        .then(function(response) {
+            return response.json();
+        })
+        .then(function(data) {
+            if (loadingSpan) loadingSpan.style.display = 'none';
+            
+            if (!data.success || !data.hours || data.hours.length === 0) {
+                contentDiv.innerHTML = '<p>No hay datos de previsión disponibles para ' + municipality + '.</p>';
+                return;
+            }
+            
+            // Actualizar el título de la sección
+            var h2 = document.querySelector('h2');
+            var locationText = data.municipality || municipality;
+            if (data.province) {
+                locationText += ' (' + data.province + ')';
+            }
+            h2.textContent = 'PREVISIÓN HORARIA — ' + locationText;
+            
+            // Renderizar la tabla de previsión
+            contentDiv.innerHTML = renderForecastTable(data.hours);
+        })
+        .catch(function(error) {
+            if (loadingSpan) loadingSpan.style.display = 'none';
+            contentDiv.innerHTML = '<p>Error al cargar la previsión: ' + error.message + '</p>';
+        });
+}
+
+// Función para renderizar la tabla de previsión
+function renderForecastTable(hours) {
+    var now = new Date().toISOString().substr(0, 13) + ':00:00';
+    
+    // Filtrar horas futuras
+    var filtered = hours.filter(function(h) {
+        return h.datetime >= now;
+    });
+    if (filtered.length === 0) {
+        filtered = hours;
+    }
+    
+    // Agrupar por día
+    var byDay = {};
+    filtered.forEach(function(h) {
+        var date = h.datetime.substr(0, 10);
+        if (!byDay[date]) {
+            byDay[date] = [];
+        }
+        byDay[date].push(h);
+    });
+    
+    var html = '';
+    var months = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+    var today = new Date().toISOString().substr(0, 10);
+    var tomorrow = new Date(Date.now() + 86400000).toISOString().substr(0, 10);
+    
+    for (var date in byDay) {
+        var dayHours = byDay[date];
+        
+        // Calcular temperaturas máxima y mínima
+        var temps = dayHours.map(function(h) { return h.temperature; }).filter(function(t) { return t !== null; });
+        var maxTemp = temps.length > 0 ? Math.max.apply(null, temps) : null;
+        var minTemp = temps.length > 0 ? Math.min.apply(null, temps) : null;
+        
+        // Formatear fecha
+        var parts = date.split('-');
+        var day = parseInt(parts[2], 10);
+        var month = months[parseInt(parts[1], 10)];
+        var prefix = '';
+        if (date === today) {
+            prefix = 'Hoy, ';
+        } else if (date === tomorrow) {
+            prefix = 'Mañana, ';
+        }
+        var dayLabel = prefix + day + ' de ' + month;
+        
+        var tempRange = '';
+        if (maxTemp !== null && minTemp !== null) {
+            tempRange = ' — Mín: ' + minTemp + '° / Máx: ' + maxTemp + '°';
+        }
+        
+        html += '<h3>' + dayLabel + tempRange + '</h3>\n';
+        html += '<div class="forecast-scroll"><table class="forecast">\n';
+        html += '<tr><th>Hora</th><th>°C</th><th>Sens.</th><th>Viento</th><th>Prob.</th><th>Lluvia</th><th>Cielo</th></tr>\n';
+        
+        dayHours.forEach(function(h) {
+            var hour = h.datetime.substr(11, 5);
+            var temp = h.temperature !== null ? h.temperature + '°' : '-';
+            var feels = h.feels_like !== null ? h.feels_like + '°' : '-';
+            
+            var windStr = '-';
+            if (h.wind_dir && h.wind_speed !== null) {
+                var arrows = {'N':'↑','NE':'↗','E':'→','SE':'↘','S':'↓','SO':'↙','O':'←','NO':'↖','C':'○'};
+                var arrow = arrows[h.wind_dir] || '';
+                windStr = arrow + ' ' + h.wind_dir + ' ' + h.wind_speed + ' km/h';
+                if (h.wind_gust && h.wind_gust > h.wind_speed) {
+                    windStr += ' <small>(racha ' + h.wind_gust + ')</small>';
+                }
+            }
+            
+            var rainProb = h.precip_prob !== null ? h.precip_prob + '%' : '-';
+            var rainAmount = '-';
+            if (h.precip_prob > 0 && h.precip_amount && h.precip_amount !== '0') {
+                rainAmount = h.precip_amount + ' mm';
+            }
+            
+            var sky = h.sky_description || '-';
+            
+            var probClass = '';
+            if (h.precip_prob >= 60) {
+                probClass = ' class="rain-high"';
+            } else if (h.precip_prob >= 30) {
+                probClass = ' class="rain-med"';
+            }
+            
+            html += '<tr>';
+            html += '<td><strong>' + hour + '</strong></td>';
+            html += '<td>' + temp + '</td>';
+            html += '<td>' + feels + '</td>';
+            html += '<td>' + windStr + '</td>';
+            html += '<td' + probClass + '>' + rainProb + '</td>';
+            html += '<td>' + rainAmount + '</td>';
+            html += '<td>' + sky + '</td>';
+            html += '</tr>\n';
+        });
+        
+        html += '</table></div>\n';
+    }
+    
+    return html;
+}
+
+// Inicializar mostrando todas las alertas por defecto
 document.addEventListener('DOMContentLoaded', function() {
-    fm('Chipiona');
+    // No aplicar filtro por defecto, mostrar todas las alertas
 });
 </script>
 
