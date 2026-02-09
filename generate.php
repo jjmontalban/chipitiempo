@@ -1,16 +1,16 @@
 <?php
 
 /**
- * AUXIO - Generador de página de emergencias para España
- * 
- * Entry point único. Recopila alertas de todas las fuentes,
- * normaliza al schema común y genera un HTML ultraligero.
- * 
+ * ChipiTiempo - Generador de página del tiempo
+ *
+ * Recopila previsión horaria y alertas, genera HTML ultraligero.
+ *
  * Uso:
  *   php generate.php [output_file.html]
  */
 
 require_once __DIR__ . '/src/Alert.php';
+require_once __DIR__ . '/src/HourlyForecast.php';
 require_once __DIR__ . '/src/Generator.php';
 
 // Cargar variables de entorno
@@ -27,11 +27,14 @@ $output = $argc > 1 ? $argv[1] : 'index.html';
 $originalOutput = $output; // Store original for error messages
 
 try {
+    // Recopilar previsión horaria (Chipiona por defecto)
+    $forecast = AlertGenerator::collectForecast();
+
     // Recopilar alertas
     $alerts = AlertGenerator::collectAlerts();
-    
+
     // Generar HTML
-    $html = AlertGenerator::renderHTML($alerts);
+    $html = AlertGenerator::renderHTML($alerts, $forecast);
     
     // Asegurar que el directorio existe
     $outputDir = dirname($output);
@@ -77,7 +80,8 @@ try {
     }
     
     $fileSize = filesize($output);
-    echo "[auxio] {$output} generado ($fileSize bytes, " . count($alerts) . " alertas)\n";
+    $forecastCount = count($forecast['hours'] ?? []);
+    echo "[chipitiempo] {$output} generado ($fileSize bytes, {$forecastCount} horas de previsión, " . count($alerts) . " alertas)\n";
     
 } catch (Exception $exc) {
     echo "[error] " . $exc->getMessage() . "\n";

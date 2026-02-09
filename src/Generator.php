@@ -1,7 +1,7 @@
 <?php
 
 /**
- * AUXIO - Generador de HTML y manejador de alertas
+ * ChipiTiempo - Generador de HTML: previsión horaria y alertas
  */
 
 class AlertGenerator {
@@ -67,6 +67,37 @@ class AlertGenerator {
         'Ubrique',
         'Vejer de la Frontera',
     ];
+
+    /** Códigos INE de municipios de Cádiz para la API de AEMET */
+    private const MUNICIPALITY_CODES = [
+        'Algeciras' => '11004',
+        'Arcos de la Frontera' => '11006',
+        'Barbate' => '11007',
+        'Cádiz (capital)' => '11012',
+        'Chiclana de la Frontera' => '11015',
+        'Chipiona' => '11016',
+        'Conil de la Frontera' => '11014',
+        'El Puerto de Santa María' => '11027',
+        'Espera' => '11017',
+        'Grazalema' => '11019',
+        'Jerez de la Frontera' => '11020',
+        'Jimena de la Frontera' => '11021',
+        'La Línea de la Concepción' => '11022',
+        'Los Barrios' => '11008',
+        'Medina-Sidonia' => '11023',
+        'Olvera' => '11024',
+        'Prado del Rey' => '11026',
+        'Puerto Real' => '11028',
+        'Rota' => '11030',
+        'San Fernando' => '11031',
+        'San Roque' => '11033',
+        'Sanlúcar de Barrameda' => '11034',
+        'Tarifa' => '11035',
+        'Ubrique' => '11038',
+        'Vejer de la Frontera' => '11039',
+    ];
+
+    private const DEFAULT_MUNICIPALITY = 'Chipiona';
 
     /** Palabras clave para mapear zonas de alerta a provincias */
     private const PROVINCE_KEYWORDS = [
@@ -205,6 +236,136 @@ class AlertGenerator {
     }
 
     /**
+     * Obtener código INE de un municipio
+     */
+    public static function getMunicipalityCode(string $name): ?string {
+        return self::MUNICIPALITY_CODES[$name] ?? null;
+    }
+
+    /**
+     * Recopilar previsión horaria para un municipio
+     */
+    public static function collectForecast(string $municipality = null): array {
+        $municipality = $municipality ?? self::DEFAULT_MUNICIPALITY;
+        $code = self::getMunicipalityCode($municipality);
+
+        if (!$code) {
+            echo "[forecast] Unknown municipality: {$municipality}\n";
+            return ['name' => $municipality, 'province' => '', 'issued' => '', 'hours' => []];
+        }
+
+        require_once __DIR__ . "/Sources/AEMET.php";
+        try {
+            $forecast = AEMETSource::fetchHourlyForecast($code);
+            echo "[forecast] " . count($forecast['hours']) . " horas de previsión para {$municipality}\n";
+            return $forecast;
+        } catch (Exception $exc) {
+            echo "[forecast] Error: {$exc->getMessage()}\n";
+            return ['name' => $municipality, 'province' => '', 'issued' => '', 'hours' => []];
+        }
+    }
+
+    /**
+     * Renderizar sección de previsión horaria
+     */
+    public static function renderWeatherSection(array $forecast): string {
+        $name = htmlspecialchars($forecast['name'] ?? '', ENT_QUOTES, 'UTF-8');
+        $province = htmlspecialchars($forecast['province'] ?? '', ENT_QUOTES, 'UTF-8');
+        $hours = $forecast['hours'] ?? [];
+
+        if (empty($hours)) {
+            return "<h2>PREVISI&Oacute;N HORARIA</h2>\n<p>No hay datos de previsi&oacute;n disponibles.</p>\n";
+        }
+
+        $location = $name;
+        if ($province) {
+            $location .= " ({$province})";
+        }
+
+        // Agrupar horas por día
+        $byDay = [];
+        foreach ($hours as $h) {
+            $date = substr($h->datetime, 0, 10);
+            $byDay[$date][] = $h;
+        }
+
+        $html = "<h2>PREVISI&Oacute;N HORARIA &mdash; {$location}</h2>\n";
+
+        foreach ($byDay as $date => $dayHours) {
+            $dayLabel = self::formatDateLabel($date);
+            $html .= "<h3>{$dayLabel}</h3>\n";
+            $html .= "<div class=\"forecast-scroll\"><table class=\"forecast\">\n";
+            $html .= "<tr><th>Hora</th><th>&deg;C</th><th>Sens.</th><th>Viento</th><th>Lluvia</th><th>Cielo</th></tr>\n";
+
+            foreach ($dayHours as $h) {
+                $hour = substr($h->datetime, 11, 5);
+                $temp = $h->temperature !== null ? "{$h->temperature}&deg;" : '-';
+                $feels = $h->feelsLike !== null ? "{$h->feelsLike}&deg;" : '-';
+
+                $windStr = '-';
+                if ($h->windDir !== null && $h->windSpeed !== null) {
+                    $arrow = $h->windArrow();
+                    $windStr = "{$arrow} {$h->windDir} {$h->windSpeed}";
+                    if ($h->windGust !== null && $h->windGust > $h->windSpeed) {
+                        $windStr .= " <small>(r.{$h->windGust})</small>";
+                    }
+                }
+
+                $rain = $h->precipProb !== null ? "{$h->precipProb}%" : '-';
+                $sky = $h->skyDescription ? htmlspecialchars($h->skyDescription, ENT_QUOTES, 'UTF-8') : '-';
+
+                // Resaltar lluvia alta
+                $rainClass = '';
+                if ($h->precipProb !== null && $h->precipProb >= 60) {
+                    $rainClass = ' class="rain-high"';
+                } elseif ($h->precipProb !== null && $h->precipProb >= 30) {
+                    $rainClass = ' class="rain-med"';
+                }
+
+                $html .= "<tr>";
+                $html .= "<td><strong>{$hour}</strong></td>";
+                $html .= "<td>{$temp}</td>";
+                $html .= "<td>{$feels}</td>";
+                $html .= "<td>{$windStr}</td>";
+                $html .= "<td{$rainClass}>{$rain}</td>";
+                $html .= "<td>{$sky}</td>";
+                $html .= "</tr>\n";
+            }
+
+            $html .= "</table></div>\n";
+        }
+
+        return $html;
+    }
+
+    /**
+     * Formatear fecha como "Hoy, 9 de febrero" o "Mañana, 10 de febrero"
+     */
+    private static function formatDateLabel(string $date): string {
+        $months = [
+            1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril',
+            5 => 'mayo', 6 => 'junio', 7 => 'julio', 8 => 'agosto',
+            9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre',
+        ];
+
+        $today = date('Y-m-d');
+        $tomorrow = date('Y-m-d', strtotime('+1 day'));
+
+        $parts = explode('-', $date);
+        $day = (int)$parts[2];
+        $month = $months[(int)$parts[1]] ?? '';
+
+        $prefix = '';
+        if ($date === $today) {
+            $prefix = 'Hoy, ';
+        } elseif ($date === $tomorrow) {
+            $prefix = 'Ma&ntilde;ana, ';
+        }
+
+        return "{$prefix}{$day} de {$month}";
+    }
+
+    /**
      * Generar filtro de provincias permitidas
      * Siempre muestra las provincias configuradas en ALLOWED_PROVINCES
      */
@@ -312,11 +473,12 @@ HTML;
     /**
      * Generar página HTML completa
      */
-    public static function renderHTML(array $alerts): string {
+    public static function renderHTML(array $alerts, array $forecast = []): string {
         $now = date('Y-m-d H:i') . ' UTC';
         $filterHtml = self::renderProvinceFilter();
         $municFilterHtml = self::renderMunicipalityFilter();
         $alertsHtml = self::renderAlertsSection($alerts);
+        $weatherHtml = !empty($forecast) ? self::renderWeatherSection($forecast) : '';
 
         return <<<HTML
 <!DOCTYPE html>
@@ -324,10 +486,10 @@ HTML;
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="AUXIO - Información de emergencias para España">
-<title>AUXIO - Emergencias España</title>
+<meta name="description" content="ChipiTiempo - El tiempo en Chipiona y comarca">
+<title>ChipiTiempo - El tiempo en Chipiona</title>
 <style>
-body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; max-width: 900px; }
 h1, h2, h3 { color: #333; }
 hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
 ul { padding-left: 20px; }
@@ -337,14 +499,22 @@ small { color: #666; }
 .prov-filter a { white-space: nowrap; }
 .munic-filter { margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 4px; line-height: 2; border-left: 4px solid #0066cc; }
 .munic-filter a { white-space: nowrap; }
+.forecast-scroll { overflow-x: auto; }
+.forecast { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 14px; }
+.forecast th { background: #2c3e50; color: #fff; padding: 6px 8px; text-align: left; white-space: nowrap; }
+.forecast td { padding: 5px 8px; border-bottom: 1px solid #eee; white-space: nowrap; }
+.forecast tr:hover { background: #f5f8fc; }
+.rain-med { color: #e67e22; font-weight: bold; }
+.rain-high { color: #e74c3c; font-weight: bold; }
 </style>
 </head>
 <body>
 
-<h1>Emergencias España</h1>
+<h1>ChipiTiempo</h1>
 
-<p><strong>Información crítica para conexiones lentas.</strong></p>
-<p><em>Fecha act: $now</em></p>
+<p><em>Actualizado: $now</em></p>
+
+$weatherHtml
 
 <hr>
 
@@ -354,12 +524,10 @@ $filterHtml
 $municFilterHtml
 $alertsHtml
 
-<p><strong>Consulta las alertas oficiales en tiempo real:</strong></p>
+<p><strong>Fuentes oficiales:</strong></p>
 <ul>
-<li><strong>AEMET</strong> - Alertas meteorológicas: <a href="https://www.aemet.es/es/eltiempo/prediccion/avisos">aemet.es/avisos</a></li>
-<li><strong>Protección Civil</strong>: <a href="https://www.proteccioncivil.es">proteccioncivil.es</a></li>
-<li><strong>DGT</strong> - Estado de carreteras: <a href="https://infocar.dgt.es/etraffic/">infocar.dgt.es</a></li>
-<li><strong>IGN</strong> - Actividad sísmica: <a href="https://www.ign.es/web/ign/portal/sis-catalogo-terremotos">ign.es/terremotos</a></li>
+<li><strong>AEMET</strong> - Alertas meteorol&oacute;gicas: <a href="https://www.aemet.es/es/eltiempo/prediccion/avisos">aemet.es/avisos</a></li>
+<li><strong>IGN</strong> - Actividad s&iacute;smica: <a href="https://www.ign.es/web/ign/portal/sis-catalogo-terremotos">ign.es/terremotos</a></li>
 </ul>
 
 <hr>
@@ -368,76 +536,61 @@ $alertsHtml
 
 <h3>Emergencias Generales</h3>
 <ul>
-<li><strong>112</strong> - Emergencias (Policía, Bomberos, Ambulancia) - <a href="tel:112">Llamar</a></li>
-<li><strong>091</strong> - Policía Nacional - <a href="tel:091">Llamar</a></li>
+<li><strong>112</strong> - Emergencias (Polic&iacute;a, Bomberos, Ambulancia) - <a href="tel:112">Llamar</a></li>
+<li><strong>091</strong> - Polic&iacute;a Nacional - <a href="tel:091">Llamar</a></li>
 <li><strong>062</strong> - Guardia Civil - <a href="tel:062">Llamar</a></li>
-<li><strong>080/085</strong> - Bomberos (varía por comunidad) - <a href="tel:080">Llamar</a></li>
+<li><strong>080/085</strong> - Bomberos (var&iacute;a por comunidad) - <a href="tel:080">Llamar</a></li>
 <li><strong>061</strong> - Urgencias Sanitarias - <a href="tel:061">Llamar</a></li>
 </ul>
 
 <h3>Emergencias Especializadas</h3>
 <ul>
-<li><strong>016</strong> - Violencia de Género (no deja rastro en factura) - <a href="tel:016">Llamar</a></li>
-<li><strong>024</strong> - Atención a la Conducta Suicida - <a href="tel:024">Llamar</a></li>
-<li><strong>915 620 420</strong> - Servicio de Información Toxicológica - <a href="tel:915620420">Llamar</a></li>
+<li><strong>016</strong> - Violencia de G&eacute;nero (no deja rastro en factura) - <a href="tel:016">Llamar</a></li>
+<li><strong>024</strong> - Atenci&oacute;n a la Conducta Suicida - <a href="tel:024">Llamar</a></li>
 </ul>
 
 <hr>
 
-<h2>GUÍAS RÁPIDAS DE ACTUACIÓN</h2>
+<details>
+<summary><strong>GU&Iacute;AS R&Aacute;PIDAS DE ACTUACI&Oacute;N</strong></summary>
 
 <h3>DANA / INUNDACIONES</h3>
 <ul>
-<li>NO cruces zonas inundadas a pie ni en vehículo</li>
-<li>Alójate de barrancos, ramblas y cauces secos</li>
-<li>Si estás en un vehículo y empieza a flotar, ABANDÓNALO</li>
+<li>NO cruces zonas inundadas a pie ni en veh&iacute;culo</li>
+<li>Al&eacute;jate de barrancos, ramblas y cauces secos</li>
+<li>Si est&aacute;s en un veh&iacute;culo y empieza a flotar, ABAND&Oacute;NALO</li>
 <li>Busca terreno elevado</li>
-<li>NO bajes a sótanos o garajes</li>
+<li>NO bajes a s&oacute;tanos o garajes</li>
 <li>Corta la electricidad si hay agua en casa</li>
 </ul>
 
 <h3>TERREMOTOS</h3>
 <ul>
-<li>DENTRO: Protégete bajo mesa resistente o marco de puerta</li>
-<li>FUERA: Alójate de edificios, cables, farolas</li>
+<li>DENTRO: Prot&eacute;gete bajo mesa resistente o marco de puerta</li>
+<li>FUERA: Al&eacute;jate de edificios, cables, farolas</li>
 <li>NO uses ascensores</li>
-<li>Espera réplicas</li>
-<li>Sal de edificios dañados inmediatamente</li>
+<li>Espera r&eacute;plicas</li>
 </ul>
 
 <h3>INCENDIOS FORESTALES</h3>
 <ul>
 <li>Llama al 112 inmediatamente</li>
-<li>Evacúa si las autoridades lo ordenan - NO ESPERES</li>
-<li>NO huyas monte arriba, el fuego sube más rápido</li>
-<li>Alójate en dirección perpendicular al avance del fuego</li>
+<li>Evac&uacute;a si las autoridades lo ordenan - NO ESPERES</li>
+<li>NO huyas monte arriba, el fuego sube m&aacute;s r&aacute;pido</li>
 </ul>
 
 <h3>OLAS DE CALOR</h3>
 <ul>
-<li>Hidrátate constantemente</li>
+<li>Hidr&aacute;tate constantemente</li>
 <li>Evita salir entre 12h y 17h</li>
-<li>Vigila a ancianos, niños y enfermos crónicos</li>
-<li>Golpe de calor: llama al 112 y enfría el cuerpo con agua</li>
+<li>Vigila a ancianos, ni&ntilde;os y enfermos cr&oacute;nicos</li>
+<li>Golpe de calor: llama al 112 y enfr&iacute;a el cuerpo con agua</li>
 </ul>
+</details>
 
 <hr>
 
-<h2>KIT DE EMERGENCIA BÁSICO (72 horas)</h2>
-<ul>
-<li>Agua: 3 litros por persona/día</li>
-<li>Alimentos no perecederos</li>
-<li>Radio portátil y linterna con pilas</li>
-<li>Batería externa para móvil</li>
-<li>Botiquín básico y medicación personal</li>
-<li>Copias de documentos importantes</li>
-<li>Efectivo en billetes pequeños</li>
-<li>Manta térmica y silbato</li>
-</ul>
-
-<hr>
-
-<p><small>AUXIO - Proyecto de código abierto. No sustituye los servicios oficiales de emergencia. En caso de emergencia, llama al <strong>112</strong>.</small></p>
+<p><small>ChipiTiempo - Datos de <a href="https://www.aemet.es">AEMET</a> e <a href="https://www.ign.es">IGN</a>. No sustituye los servicios oficiales. En caso de emergencia, llama al <strong>112</strong>.</small></p>
 
 <script>
 var currentProvince = '';
@@ -448,10 +601,10 @@ function updateAlertsDisplay() {
     for (var i = 0; i < items.length; i++) {
         var p = ',' + items[i].getAttribute('data-provinces') + ',';
         var m = ',' + items[i].getAttribute('data-municipalities') + ',';
-        
+
         var provMatch = !currentProvince || p.indexOf(',' + currentProvince + ',') >= 0;
         var municMatch = !currentMunicipality || m.indexOf(',' + currentMunicipality + ',') >= 0;
-        
+
         items[i].style.display = (provMatch && municMatch) ? '' : 'none';
     }
     var groups = document.querySelectorAll('.src-group');
