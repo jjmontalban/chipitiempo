@@ -8,7 +8,6 @@
  *   GET /api.php?action=forecast&municipality=Rota    - Previsión por municipio
  *   GET /api.php?action=alerts                        - Todas las alertas
  *   GET /api.php?action=alerts&severity=red           - Por severidad
- *   GET /api.php?action=alerts&source=ign             - Por fuente
  *   GET /api.php?action=health                        - Status API
  */
 
@@ -69,12 +68,6 @@ try {
             $severity = getParam('severity');
             if ($severity) {
                 $alerts = array_filter($alerts, fn(Alert $a) => $a->severity === $severity);
-            }
-            
-            // Filtrar por fuente si se especifica
-            $source = getParam('source');
-            if ($source) {
-                $alerts = array_filter($alerts, fn(Alert $a) => $a->source === $source);
             }
             
             // Agrupar por fuente si se solicita

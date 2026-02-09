@@ -27,7 +27,6 @@ class AlertGenerator {
     ];
 
     private const SOURCE_LABELS = [
-        "ign" => "Sismología (IGN)",
         "aemet" => "Meteorología (AEMET)",
     ];
 
@@ -156,36 +155,27 @@ class AlertGenerator {
     ];
 
     /**
-     * Recopilar alertas de todas las fuentes
+     * Recopilar alertas de AEMET
      */
     public static function collectAlerts(): array {
-        $sources = [
-            ['name' => 'AEMET', 'file' => 'AEMET.php', 'class' => 'AEMETSource'],
-            ['name' => 'IGN', 'file' => 'IGN.php', 'class' => 'IGNSource'],
-        ];
-
-        $allAlerts = [];
-
-        foreach ($sources as $source) {
-            try {
-                require_once __DIR__ . "/Sources/{$source['file']}";
-                $class = $source['class'];
-                $alerts = $class::fetch();
-                echo "[{$source['name']}] " . count($alerts) . " alertas obtenidas\n";
-                $allAlerts = array_merge($allAlerts, $alerts);
-            } catch (Exception $exc) {
-                echo "[{$source['name']}] Error: {$exc->getMessage()}\n";
-            }
+        require_once __DIR__ . "/Sources/AEMET.php";
+        
+        try {
+            $alerts = AEMETSource::fetch();
+            echo "[AEMET] " . count($alerts) . " alertas obtenidas\n";
+            
+            // Ordenar: más severas primero
+            usort($alerts, function(Alert $a, Alert $b) {
+                $sevA = self::SEVERITY_ORDER[$a->severity] ?? 99;
+                $sevB = self::SEVERITY_ORDER[$b->severity] ?? 99;
+                return $sevA <=> $sevB;
+            });
+            
+            return $alerts;
+        } catch (Exception $exc) {
+            echo "[AEMET] Error: {$exc->getMessage()}\n";
+            return [];
         }
-
-        // Ordenar: más severas primero
-        usort($allAlerts, function(Alert $a, Alert $b) {
-            $sevA = self::SEVERITY_ORDER[$a->severity] ?? 99;
-            $sevB = self::SEVERITY_ORDER[$b->severity] ?? 99;
-            return $sevA <=> $sevB;
-        });
-
-        return $allAlerts;
     }
 
     /**
@@ -552,10 +542,9 @@ $filterHtml
 $municFilterHtml
 $alertsHtml
 
-<p><strong>Fuentes oficiales:</strong></p>
+<p><strong>Fuente oficial:</strong></p>
 <ul>
 <li><strong>AEMET</strong> - Alertas meteorol&oacute;gicas: <a href="https://www.aemet.es/es/eltiempo/prediccion/avisos">aemet.es/avisos</a></li>
-<li><strong>IGN</strong> - Actividad s&iacute;smica: <a href="https://www.ign.es/web/ign/portal/sis-catalogo-terremotos">ign.es/terremotos</a></li>
 </ul>
 
 <hr>
@@ -592,14 +581,6 @@ $alertsHtml
 <li>Corta la electricidad si hay agua en casa</li>
 </ul>
 
-<h3>TERREMOTOS</h3>
-<ul>
-<li>DENTRO: Prot&eacute;gete bajo mesa resistente o marco de puerta</li>
-<li>FUERA: Al&eacute;jate de edificios, cables, farolas</li>
-<li>NO uses ascensores</li>
-<li>Espera r&eacute;plicas</li>
-</ul>
-
 <h3>INCENDIOS FORESTALES</h3>
 <ul>
 <li>Llama al 112 inmediatamente</li>
@@ -614,11 +595,19 @@ $alertsHtml
 <li>Vigila a ancianos, ni&ntilde;os y enfermos cr&oacute;nicos</li>
 <li>Golpe de calor: llama al 112 y enfr&iacute;a el cuerpo con agua</li>
 </ul>
+
+<h3>TORMENTAS Y VIENTO FUERTE</h3>
+<ul>
+<li>Busca refugio en edificios s&oacute;lidos</li>
+<li>Al&eacute;jate de &aacute;rboles, postes y estructuras altas</li>
+<li>Evita usar tel&eacute;fonos con cable durante tormentas el&eacute;ctricas</li>
+<li>NO te refugies bajo &aacute;rboles aislados</li>
+</ul>
 </details>
 
 <hr>
 
-<p><small>ChipiTiempo - Datos de <a href="https://www.aemet.es">AEMET</a> e <a href="https://www.ign.es">IGN</a>. No sustituye los servicios oficiales. En caso de emergencia, llama al <strong>112</strong>.</small></p>
+<p><small>ChipiTiempo - Datos de <a href="https://www.aemet.es">AEMET</a>. No sustituye los servicios oficiales. En caso de emergencia, llama al <strong>112</strong>.</small></p>
 
 <script>
 var currentProvince = '';
