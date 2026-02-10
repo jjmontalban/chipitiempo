@@ -19,21 +19,82 @@ require_once __DIR__ . '/src/Logging/Logger.php';
 
 use ChipiTiempo\Logging\Logger;
 
+/**
+ * Verificar si una ruta es absoluta (funciona en Windows y Unix)
+ */
+function is_absolute_path(string $path): bool {
+    return str_starts_with($path, '/') || 
+           (strlen($path) > 2 && $path[1] === ':') || // Windows: C:\
+           str_starts_with($path, '\\\\'); // UNC: \\server\share
+}
+
 // Cargar variables de entorno
-if (file_exists(__DIR__ . '/.env')) {
-    $env = parse_ini_file(__DIR__ . '/.env');
-    foreach ($env as $key => $value) {
-        $_ENV[$key] = $value;
-        putenv("{$key}={$value}");
+// Buscar .env en múltiples ubicaciones (raíz y httpdocs)
+$envPaths = [
+    __DIR__ . '/.env',
+    dirname(__DIR__) . '/.env',  // Directorio padre
+];
+
+// Si estamos en httpdocs, buscar también en raíz
+if (basename(__DIR__) === 'httpdocs') {
+    $envPaths[] = dirname(__DIR__) . '/.env';
+}
+
+$envFile = null;
+foreach ($envPaths as $path) {
+    if (file_exists($path)) {
+        $envFile = $path;
+        break;
     }
 }
 
+if ($envFile) {
+    $env = parse_ini_file($envFile);
+    if ($env === false) {
+        echo "[warning] Failed to parse .env file: {$envFile}\n";
+    } else {
+        foreach ($env as $key => $value) {
+            $_ENV[$key] = $value;
+            putenv("{$key}={$value}");
+        }
+        // Mostrar que se cargó el .env
+        echo "[env] Loaded environment from: {$envFile}\n";
+    }
+} else {
+    echo "[warning] No .env file found in any location\n";
+}
+
 // Inicializar logger
-Logger::init(__DIR__ . '/logs/generate.log', true);  // File + console
+// Detectar si estamos en httpdocs (producción en Plesk) o en directorio raíz
+$logFile = __DIR__ . '/logs/generate.log';
+if (basename(__DIR__) === 'chipitiempo') {
+    // Estamos en raíz, pero httpdocs existe → usar logs en httpdocs
+    $httpdocsPath = __DIR__ . '/httpdocs';
+    if (is_dir($httpdocsPath)) {
+        $logFile = $httpdocsPath . '/logs/generate.log';
+    }
+}
+Logger::init($logFile, true);  // File + console
 Logger::info("ChipiTiempo generation started");
 
-// Archivo de salida (default: index.html)
+// Archivo de salida (default: index.html en el directorio actual)
 $output = $argc > 1 ? $argv[1] : 'index.html';
+
+// Si estamos en raíz pero httpdocs existe (Plesk heredado), escribir en httpdocs
+if (basename(__DIR__) === 'chipitiempo' && is_dir(__DIR__ . '/httpdocs')) {
+    // Estamos en raíz con httpdocs → escribir en httpdocs/
+    if (!is_absolute_path($output)) {
+        $output = __DIR__ . '/httpdocs/' . $output;
+    }
+    Logger::debug("Plesk legacy detected, using output path: {$output}");
+} else if (basename(__DIR__) === 'httpdocs') {
+    // Estamos en httpdocs, escribir aquí
+    if (!is_absolute_path($output)) {
+        $output = __DIR__ . '/' . $output;
+    }
+    Logger::debug("Running in httpdocs context, using output path: {$output}");
+}
+
 $originalOutput = $output; // Store original for error messages
 
 try {

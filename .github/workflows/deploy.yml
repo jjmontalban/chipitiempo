@@ -24,10 +24,75 @@ jobs:
       - name: Deploy to VPS
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
-            cd /var/www/vhosts/chipitiempo/httpdocs
+            set -e  # Exit on error
+            
+            REPO_ROOT="/var/www/vhosts/chipitiempo"
+            DEPLOY_DIR="${REPO_ROOT}/httpdocs"
+            
+            echo "=========================================="
+            echo "[$(date)] 🚀 Iniciando despliegue ChipiTiempo"
+            echo "=========================================="
+            
+            # Verificar estructura de directorios
+            echo "[$(date)] 📂 Estructura de directorios:"
+            ls -la "$REPO_ROOT" | head -20
+            
+            # Ir al directorio de despliegue
+            cd "$DEPLOY_DIR"
+            echo "[$(date)] 📍 Directorio actual: $(pwd)"
+            
+            # Descargar cambios
+            echo ""
+            echo "[$(date)] 📥 Descargando cambios del repositorio..."
             git fetch origin prod
             git reset --hard origin/prod
-            php generate.php
-            cp -r /var/www/vhosts/chipitiempo/httpdocs/* /var/www/vhosts/chipitiempo/
-            echo "Deployment completed"
+            
+            # Generar HTML (pasando ruta absoluta para asegurar que se guarde en httpdocs)
+            echo ""
+            echo "[$(date)] 🔧 Generando index.html..."
+            php generate.php "${DEPLOY_DIR}/index.html" 2>&1
+            
+            # Verificar que el archivo se generó correctamente
+            echo ""
+            echo "[$(date)] ✅ Verificando archivo generado..."
+            
+            if [ -f "${DEPLOY_DIR}/index.html" ] && [ -s "${DEPLOY_DIR}/index.html" ]; then
+              SIZE=$(wc -c < "${DEPLOY_DIR}/index.html")
+              MODIFIED=$(date -r "${DEPLOY_DIR}/index.html" "+%Y-%m-%d %H:%M:%S")
+              echo "[$(date)] ✓ index.html generado correctamente"
+              echo "[$(date)]   📊 Tamaño: $SIZE bytes"
+              echo "[$(date)]   🕐 Hora: $MODIFIED"
+              echo "[$(date)]   📍 Ubicación: ${DEPLOY_DIR}/index.html"
+            else
+              echo "[$(date)] ✗ ERROR: index.html no existe o está vacío en ${DEPLOY_DIR}/"
+              ls -la "${DEPLOY_DIR}/" 2>&1 || true
+              exit 1
+            fi
+            
+            # Establecer permisos (importantes para Plesk)
+            echo ""
+            echo "[$(date)] 🔐 Estableciendo permisos..."
+            chmod 644 "${DEPLOY_DIR}/index.html"
+            chmod 755 "${DEPLOY_DIR}"
+            
+            # Verificar permisos
+            ls -lh "${DEPLOY_DIR}/index.html"
+            
+            # Limpiar archivos temporales si existen
+            echo ""
+            echo "[$(date)] 🧹 Limpiando archivos temporales..."
+            rm -f "${DEPLOY_DIR}/generate.log"
+            
+            # Información final
+            echo ""
+            echo "[$(date)] 📊 Verificación final:"
+            echo "[$(date)]   Inodes de index.html:"
+            ls -i "${DEPLOY_DIR}/index.html" "${REPO_ROOT}/index.html" 2>&1 || true
+            echo "[$(date)]   Content-Length:"
+            wc -c "${DEPLOY_DIR}/index.html" 2>&1 || true
+            
+            echo ""
+            echo "=========================================="
+            echo "[$(date)] ✨ Despliegue completado exitosamente"
+            echo "=========================================="
           ENDSSH

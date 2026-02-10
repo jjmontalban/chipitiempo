@@ -37,16 +37,11 @@ class AEMET {
     private static function getApiKey(): string {
         return $_ENV['AEMET_API_KEY'] ?? getenv('AEMET_API_KEY') ?? '';
     }
-    
+
     /**
      * Hacer solicitud HTTP GET con clave API
      */
     private static function request(string $url, string $accept = "application/json"): string {
-        // Ensure accept header includes UTF-8 charset
-        if (strpos($accept, 'charset') === false && strpos($accept, '*') === false) {
-            $accept .= "; charset=utf-8";
-        }
-        
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',
@@ -77,6 +72,12 @@ class AEMET {
             }
         }
         
+        // Fijar encoding: detectar e intentar convertir a UTF-8 si es necesario
+        // AEMET a veces devuelve Latin-1 a pesar de decir que es UTF-8
+        if (!mb_check_encoding($response, 'UTF-8')) {
+            $response = mb_convert_encoding($response, 'UTF-8', 'ISO-8859-1,UTF-8,ASCII');
+        }
+        
         return $response;
     }
 
@@ -98,16 +99,47 @@ class AEMET {
      */
     private static function extractTar(string $data, bool $gzipped): array {
         $xmlFiles = [];
-        $tmpFile = tempnam(sys_get_temp_dir(), 'aemet_');
-        $tmpDir = $tmpFile . '_dir';
+        
+        // Intentar múltiples ubicaciones de directorio temporal
+        $tempDirs = [
+            sys_get_temp_dir(),
+            dirname(__DIR__) . '/tmp',  // Usar carpeta del proyecto
+            '/tmp',
+            getcwd(),
+        ];
+        
+        $tmpBase = null;
+        foreach ($tempDirs as $dir) {
+            if (is_writable($dir)) {
+                $tmpBase = tempnam($dir, 'aemet_');
+                if ($tmpBase !== false) {
+                    break;
+                }
+            }
+        }
+        
+        if (!$tmpBase) {
+            throw new \Exception("Could not create temporary file in any available directory");
+        }
+        
+        // PharData requires correct file extension to detect compression format
+        $extension = $gzipped ? '.tar.gz' : '.tar';
+        $tmpFile = $tmpBase . $extension;
+        @unlink($tmpBase); // Remove the original temp file (we'll use the renamed one)
+        $tmpDir = $tmpBase . '_dir';
 
         try {
             file_put_contents($tmpFile, $data);
             mkdir($tmpDir, 0755, true);
 
-            // Use PharData for cross-platform tar extraction (works on Windows too)
             try {
                 $phar = new PharData($tmpFile);
+                // For .tar.gz, decompress first then extract
+                if ($gzipped) {
+                    $tarFile = $tmpBase . '.tar';
+                    $phar->decompress();
+                    $phar = new PharData($tarFile);
+                }
                 $phar->extractTo($tmpDir);
             } catch (\Exception $e) {
                 throw new \Exception("Failed to extract tar archive: " . $e->getMessage());
@@ -124,6 +156,10 @@ class AEMET {
             }
         } finally {
             @unlink($tmpFile);
+            // Also clean up the decompressed .tar file if it exists
+            if ($gzipped) {
+                @unlink($tmpBase . '.tar');
+            }
             if (is_dir($tmpDir)) {
                 $delIterator = new RecursiveIteratorIterator(
                     new RecursiveDirectoryIterator($tmpDir, RecursiveDirectoryIterator::SKIP_DOTS),
@@ -346,7 +382,7 @@ class AEMET {
      * Obtener previsión horaria para un municipio
      *
      * @param string $municipioId Código INE del municipio (ej: "11016" para Chipiona)
-     * @return array{name: string, province: string, issued: string, hours: AEMETForecast[]}
+     * @return array{name: string, province: string, issued: string, hours: HourlyForecast[]}
      */
     public static function fetchHourlyForecast(string $municipioId = '11016'): array {
         $apiKey = self::getApiKey();
@@ -358,16 +394,6 @@ class AEMET {
         try {
             $datosUrl = self::getHourlyDataUrl($municipioId);
             $rawData = self::request($datosUrl);
-
-            // Fix encoding issues: AEMET API sometimes returns malformed UTF-8
-            // Try to clean up the response
-            if (!mb_check_encoding($rawData, 'UTF-8')) {
-                // If not valid UTF-8, try to convert from Latin1
-                $rawData = @iconv('ISO-8859-1', 'UTF-8//IGNORE', $rawData);
-                if ($rawData === false) {
-                    $rawData = mb_convert_encoding($rawData, 'UTF-8', 'ISO-8859-1');
-                }
-            }
 
             $json = json_decode($rawData, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
@@ -400,17 +426,9 @@ class AEMET {
                 // Probabilidad de precipitación (puede venir en periodos de 6h)
                 $precipProb = self::indexPrecipProb($day['probPrecipitacion'] ?? []);
 
-                // Viento y rachas máximas (pueden venir en un solo campo "vientoAndRachaMax")
-                $windData = $day['vientoAndRachaMax'] ?? $day['viento'] ?? [];
-                $wind = self::indexWind($windData);
-                
-                // Rachas máximas (puede estar separado o dentro de vientoAndRachaMax)
-                $gustsData = $day['rachaMax'] ?? [];
-                $gusts = self::indexGust($gustsData);
-                // Si no hay rachaMax separado, intentar extraerlo de vientoAndRachaMax
-                if (empty($gusts) && !empty($day['vientoAndRachaMax'])) {
-                    $gusts = self::extractGustsFromWindData($day['vientoAndRachaMax']);
-                }
+                // Viento (campo separado) y rachas máximas (campo separado)
+                $wind = self::indexWind($day['viento'] ?? []);
+                $gusts = self::indexGust($day['rachaMax'] ?? []);
 
                 // Generar un AEMETForecast por cada hora que tenga temperatura
                 foreach ($temps as $periodo => $tempVal) {
@@ -441,7 +459,7 @@ class AEMET {
                 'issued' => $issued,
                 'hours' => $hours,
             ];
-        } catch (Exception $exc) {
+        } catch (\Exception $exc) {
             echo "[aemet] Error fetching hourly forecast: {$exc->getMessage()}\n";
             return ['name' => '', 'province' => '', 'issued' => '', 'hours' => []];
         }
@@ -468,7 +486,7 @@ class AEMET {
 
     /**
      * Indexar probabilidad de precipitación expandiendo rangos a horas individuales
-     * Soporta periodos: "00" (individual), "0006"/"0713" (concatenado), "00-06" (con guion)
+     * Soporta periodos: "00" (individual), "0006" (concatenado), "00-06" (con guion)
      */
     private static function indexPrecipProb(array $entries): array {
         $indexed = [];
@@ -478,19 +496,19 @@ class AEMET {
             $prob = ($val !== null && $val !== '') ? (int)$val : 0;
 
             if (strpos($periodo, '-') !== false) {
-                // Rango con guión (ej: "00-06", "06-12")
+                // Rango con guion (ej: "00-06", "06-12")
                 $parts = explode('-', $periodo);
                 $start = (int)$parts[0];
                 $end = (int)$parts[1];
                 for ($h = $start; $h < $end; $h++) {
-                    $indexed[(int)str_pad($h, 2, '0', STR_PAD_LEFT)] = $prob;
+                    $indexed[$h] = $prob;
                 }
-            } elseif (strlen($periodo) === 4 && ctype_digit($periodo)) {
-                // Rango concatenado (ej: "0006" -> 00-06, "0713" -> 07-13)
+            } elseif (strlen($periodo) > 2) {
+                // Rango concatenado (ej: "0006", "0612")
                 $start = (int)substr($periodo, 0, 2);
                 $end = (int)substr($periodo, 2, 2);
                 for ($h = $start; $h < $end; $h++) {
-                    $indexed[(int)str_pad($h, 2, '0', STR_PAD_LEFT)] = $prob;
+                    $indexed[$h] = $prob;
                 }
             } else {
                 // Periodo individual (ej: "00", "01")
@@ -501,29 +519,15 @@ class AEMET {
     }
 
     /**
-     * Indexar viento desde campo "viento" o "vientoAndRachaMax" (direccion, velocidad, periodo)
-     * 
-     * Maneja dos estructuras:
-     * - Viento simple: {periodo, direccion, velocidad}
-     * - VientoAndRachaMax con arrays: {periodo, direccion: [valor], velocidad: [valor]}
+     * Indexar viento desde campo "viento" (direccion, velocidad, periodo)
      */
     private static function indexWind(array $entries): array {
         $indexed = [];
         foreach ($entries as $entry) {
             $periodo = $entry['periodo'] ?? '';
             if ($periodo === '') continue;
-            
-            // Valores pueden ser strings strings o arrays [string]
             $dir = $entry['direccion'] ?? '';
-            if (is_array($dir)) {
-                $dir = $dir[0] ?? '';
-            }
-            
             $speed = $entry['velocidad'] ?? '';
-            if (is_array($speed)) {
-                $speed = $speed[0] ?? '';
-            }
-            
             if ($dir !== '' || $speed !== '') {
                 $indexed[(int)$periodo] = [
                     'dir' => $dir !== '' ? $dir : null,
@@ -532,29 +536,6 @@ class AEMET {
             }
         }
         return $indexed;
-    }
-
-    /**
-     * Extraer velocidad de racha máxima desde vientoAndRachaMax
-     * Busca el campo "racha" dentro del array de viento combinado
-     */
-    private static function extractGustsFromWindData(array $windEntries): array {
-        $gusts = [];
-        foreach ($windEntries as $entry) {
-            $periodo = $entry['periodo'] ?? '';
-            if ($periodo === '') continue;
-            
-            // Buscar racha en varios posibles nombres de campo
-            $racha = $entry['racha'] ?? $entry['rachaMax'] ?? null;
-            if (is_array($racha)) {
-                $racha = $racha[0] ?? null;
-            }
-            
-            if ($racha !== null && $racha !== '') {
-                $gusts[(int)$periodo] = (int)$racha;
-            }
-        }
-        return $gusts;
     }
 
     /**
@@ -642,103 +623,114 @@ class AEMET {
                 try {
                     $alerts = self::parseCAP($xmlContent);
                     $allAlerts = array_merge($allAlerts, $alerts);
-                } catch (Exception $e) {
+                } catch (\Exception $e) {
                     // Saltar archivos XML inválidos
                     continue;
                 }
             }
 
             return self::deduplicateAlerts($allAlerts);
-        } catch (Exception $exc) {
+        } catch (\Exception $exc) {
             echo "[aemet] Error fetching alerts: {$exc->getMessage()}\n";
             return [];
         }
     }
 
     /**
-     * Obtener la URL de datos para previsión diaria de un municipio
-     */
-    private static function getDailyDataUrl(string $municipioId): string {
-        $url = self::BASE_URL . str_replace("{municipio}", $municipioId, self::DAILY_ENDPOINT);
-        $body = json_decode(self::request($url), true);
-
-        if (!isset($body['datos'])) {
-            throw new \Exception("AEMET daily response missing 'datos' field");
-        }
-        return $body['datos'];
-    }
-
-    /**
-     * Obtener previsión diaria para un municipio
-     *
-     * @param string $municipioId Código INE del municipio (ej: "11016" para Chipiona)
-     * @return array{name: string, province: string, issued: string, days: AEMETDailyForecast[]}
+     * Obtener previsión diaria para un municipio (5-7 días)
      */
     public static function fetchDailyForecast(string $municipioId = '11016'): array {
-        $apiKey = self::getApiKey();
-        if (empty($apiKey)) {
+        // Verificar que tenemos API key
+        if (!self::getApiKey()) {
             echo "[aemet] AEMET_API_KEY not set, skipping daily forecast.\n";
             return ['name' => '', 'province' => '', 'issued' => '', 'days' => []];
         }
 
         try {
-            $datosUrl = self::getDailyDataUrl($municipioId);
-            $rawData = self::request($datosUrl);
+            // Obtener datos del endpoint diario
+            $datosUrl = self::BASE_URL . str_replace("{municipio}", $municipioId, self::DAILY_ENDPOINT);
+            $body = json_decode(self::request($datosUrl), true);
+            
+            if (!isset($body['datos'])) {
+                throw new \Exception("AEMET daily response missing 'datos' field");
+            }
 
-            // Fix encoding issues
-            if (!mb_check_encoding($rawData, 'UTF-8')) {
-                $rawData = @iconv('ISO-8859-1', 'UTF-8//IGNORE', $rawData);
-                if ($rawData === false) {
-                    $rawData = mb_convert_encoding($rawData, 'UTF-8', 'ISO-8859-1');
+            $datosUrl = $body['datos']; // La respuesta contiene una URL a los datos comprimidos
+            $datosBody = json_decode(self::request($datosUrl), true);
+
+            if (!is_array($datosBody)) {
+                throw new \Exception("Invalid daily forecast JSON");
+            }
+
+            // Parsear datos de previsión diaria
+            $name = $datosBody['nombre'] ?? '';
+            $province = $datosBody['provincia'] ?? '';
+            $issued = $datosBody['elaboracion'] ?? '';
+            $days = [];
+
+            if (!isset($datosBody['prediccion']['dia'])) {
+                throw new \Exception("No daily forecast data found");
+            }
+
+            foreach ($datosBody['prediccion']['dia'] as $dayData) {
+                $date = $dayData['fecha'] ?? null;
+                if (!$date) continue;
+
+                $tempMin = null;
+                $tempMax = null;
+
+                // Buscar temperaturas en los períodos del día
+                if (isset($dayData['temperatura'])) {
+                    $tempMin = isset($dayData['temperatura']['minima']) ? (int)$dayData['temperatura']['minima'] : null;
+                    $tempMax = isset($dayData['temperatura']['maxima']) ? (int)$dayData['temperatura']['maxima'] : null;
                 }
-            }
 
-            $json = json_decode($rawData, true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception("Invalid JSON: " . json_last_error_msg());
-            }
-            if (!is_array($json) || empty($json)) {
-                throw new \Exception("Empty or non-array JSON response");
-            }
+                // Estado del cielo
+                $skyDescription = '';
+                $skyCode = null;
+                if (isset($dayData['estadoCielo']) && is_array($dayData['estadoCielo'])) {
+                    foreach ($dayData['estadoCielo'] as $skyEntry) {
+                        if (isset($skyEntry['descripcion'])) {
+                            $skyDescription = $skyEntry['descripcion'];
+                            $skyCode = $skyEntry['value'] ?? null;
+                            break;
+                        }
+                    }
+                } else if (isset($dayData['estadoCielo']['descripcion'])) {
+                    $skyDescription = $dayData['estadoCielo']['descripcion'];
+                    $skyCode = $dayData['estadoCielo']['value'] ?? null;
+                }
 
-            $data = $json[0] ?? [];
-            $name = $data['nombre'] ?? '';
-            $province = $data['provincia'] ?? '';
-            $issued = $data['elaborado'] ?? '';
-            $days = $data['prediccion']['dia'] ?? [];
-            echo "[aemet] Daily forecast for {$name} ({$province}), issued: {$issued}, days: " . count($days) . "\n";
-
-            $forecasts = [];
-            foreach ($days as $day) {
-                $fecha = $day['fecha'] ?? '';
-                $tempMax = $day['tmax'] ?? null;
-                $tempMin = $day['tmin'] ?? null;
-                
-                // Descripción del cielo
-                $skyEntry = $day['estadoCielo'] ?? [];
-                $skyDesc = is_array($skyEntry) ? ($skyEntry[0]['descripcion'] ?? null) : null;
-                
                 // Probabilidad de precipitación
-                $precipProb = $day['probPrecipitacion'] ?? [];
-                $precipProbVal = is_array($precipProb) && !empty($precipProb) ? $precipProb[0]['value'] ?? null : null;
-                
-                // Viento (puede haber varios periodos, tomar el primero)
-                $windData = $day['viento'] ?? [];
+                $precipProb = null;
+                if (isset($dayData['probPrecipitacion']) && is_array($dayData['probPrecipitacion'])) {
+                    foreach ($dayData['probPrecipitacion'] as $p) {
+                        if (isset($p['valor'])) {
+                            $precipProb = (int)$p['valor'];
+                            break;
+                        }
+                    }
+                } else if (isset($dayData['probPrecipitacion'])) {
+                    $precipProb = (int)$dayData['probPrecipitacion'];
+                }
+
+                // Viento
                 $windDir = null;
                 $windSpeed = null;
-                if (is_array($windData) && !empty($windData)) {
-                    $windDir = $windData[0]['direccion'] ?? null;
-                    $windSpeed = $windData[0]['velocidad'] ?? null;
+                if (isset($dayData['viento'])) {
+                    $windDir = $dayData['viento']['direccion'] ?? null;
+                    $windSpeed = isset($dayData['viento']['velocidad']) ? (int)$dayData['viento']['velocidad'] : null;
                 }
-                
-                $forecasts[] = new AEMETDailyForecast(
-                    date: $fecha,
-                    tempMin: $tempMin !== null ? (int)$tempMin : null,
-                    tempMax: $tempMax !== null ? (int)$tempMax : null,
-                    skyDescription: $skyDesc,
-                    precipProb: $precipProbVal !== null ? (int)$precipProbVal : null,
+
+                $days[] = new AEMETDailyForecast(
+                    date: $date,
+                    tempMin: $tempMin,
+                    tempMax: $tempMax,
+                    skyDescription: $skyDescription ?: null,
+                    skyCode: $skyCode,
+                    precipProb: $precipProb,
                     windDir: $windDir,
-                    windSpeed: $windSpeed !== null ? (int)$windSpeed : null,
+                    windSpeed: $windSpeed
                 );
             }
 
@@ -746,10 +738,11 @@ class AEMET {
                 'name' => $name,
                 'province' => $province,
                 'issued' => $issued,
-                'days' => $forecasts,
+                'days' => $days,
             ];
-        } catch (Exception $exc) {
+        } catch (\Exception $exc) {
             echo "[aemet] Error fetching daily forecast: {$exc->getMessage()}\n";
             return ['name' => '', 'province' => '', 'issued' => '', 'days' => []];
         }
-    }}
+    }
+}

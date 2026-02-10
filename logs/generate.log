@@ -208,3 +208,17 @@
 [2026-02-10 08:58:01] [DEBUG] Collecting alert data
 [2026-02-10 08:58:04] [DEBUG] Building HTML page
 [2026-02-10 08:58:04] [INFO] [chipitiempo] index.html generado (54353 bytes, 235 horas de previsión, 81 alertas)
+[2026-02-10 09:09:26] [INFO] ChipiTiempo generation started
+[2026-02-10 09:09:26] [DEBUG] Collecting forecast data
+[2026-02-10 09:10:12] [INFO] ChipiTiempo generation started
+[2026-02-10 09:10:12] [DEBUG] Collecting forecast data
+[2026-02-10 10:10:11] [INFO] ChipiTiempo generation started
+[2026-02-10 10:10:11] [DEBUG] Collecting forecast data
+[2026-02-10 10:10:15] [DEBUG] Collecting alert data
+[2026-02-10 10:11:05] [INFO] ChipiTiempo generation started
+[2026-02-10 10:11:05] [DEBUG] Collecting forecast data
+[2026-02-10 10:11:22] [INFO] ChipiTiempo generation started
+[2026-02-10 10:11:22] [DEBUG] Collecting forecast data
+[2026-02-10 10:11:26] [DEBUG] Collecting alert data
+[2026-02-10 10:11:28] [DEBUG] Building HTML page
+[2026-02-10 10:11:28] [INFO] [chipitiempo] index.html generado (52399 bytes, 235 horas de previsión, 81 alertas)
