@@ -1,3 +1,46 @@
+# Archivos generados localmente
 index.html
 repomix*
+
+# Configuración y variables de entorno
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+generate.log
+
+# Archivos de arranque/setup
 cron-setup.sh
+test-phase3.sh
+
+# Archivos temporales del desarrollador
+STATUS.php
+demo-phase3.php
+
+# Node/Composer (en caso de uso futuro)
+node_modules/
+vendor/
+composer.lock
+package-lock.json
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Archivos de documentación temporal
+REFACTORING.md.php
+demo-*.php
+
+# Sistema operativo
+.DS_Store
+.Windows.DS_Store
+Thumbs.db
+ehthumbs.db

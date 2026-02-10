@@ -344,7 +344,7 @@ HTML;
     }
     
     public static function buildMunicipalityFilter(array $forecasts = []): string {
-        $html = "<div class=\"munic-filter\">\n<strong>Municipios:</strong><br>\n";
+        $html = "<div class=\"munic-filter\">";
         
         // Solo mostrar municipios que tienen datos de previsión
         $municipalities = array_keys($forecasts);
