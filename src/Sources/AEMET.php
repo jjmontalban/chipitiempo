@@ -9,10 +9,12 @@ namespace ChipiTiempo\Sources;
 require_once __DIR__ . '/../Alert.php';
 require_once __DIR__ . '/../AEMETForecast.php';
 require_once __DIR__ . '/../AEMETDailyForecast.php';
+require_once __DIR__ . '/../Cache.php';
 
 use ChipiTiempo\Alert;
 use ChipiTiempo\AEMETForecast;
 use ChipiTiempo\AEMETDailyForecast;
+use ChipiTiempo\Cache;
 use PharData;
 use RecursiveIteratorIterator;
 use RecursiveDirectoryIterator;
@@ -25,6 +27,7 @@ class AEMET {
     private const HOURLY_ENDPOINT = "/api/prediccion/especifica/municipio/horaria/{municipio}";
     private const DAILY_ENDPOINT = "/api/prediccion/especifica/municipio/diaria/{municipio}";
     private const CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2";
+    private const CACHE_TTL = 300; // 5 minutos
 
     private const SEVERITY_MAP = [
         "Extreme" => "red",
@@ -36,6 +39,18 @@ class AEMET {
 
     private static function getApiKey(): string {
         return $_ENV['AEMET_API_KEY'] ?? getenv('AEMET_API_KEY') ?? '';
+    }
+
+    /**
+     * Obtener instancia del cache
+     */
+    private static function getCache(): Cache {
+        static $cache = null;
+        if ($cache === null) {
+            $cacheDir = sys_get_temp_dir() . '/chipitiempo';
+            $cache = new Cache($cacheDir, self::CACHE_TTL);
+        }
+        return $cache;
     }
 
     /**
@@ -391,6 +406,14 @@ class AEMET {
             return ['name' => '', 'province' => '', 'issued' => '', 'hours' => []];
         }
 
+        // Verificar cache antes de hacer solicitud a AEMET
+        $cacheKey = "hourly_{$municipioId}";
+        $cached = self::getCache()->getIfValid($cacheKey);
+        if ($cached !== null) {
+            echo "[aemet] Cache hit for hourly forecast {$municipioId}\n";
+            return $cached;
+        }
+
         try {
             $datosUrl = self::getHourlyDataUrl($municipioId);
             $rawData = self::request($datosUrl);
@@ -453,12 +476,17 @@ class AEMET {
                 }
             }
 
-            return [
+            $result = [
                 'name' => $name,
                 'province' => $province,
                 'issued' => $issued,
                 'hours' => $hours,
             ];
+            
+            // Guardar en cache
+            self::getCache()->set($cacheKey, $result);
+            
+            return $result;
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching hourly forecast: {$exc->getMessage()}\n";
             return ['name' => '', 'province' => '', 'issued' => '', 'hours' => []];
@@ -578,6 +606,13 @@ class AEMET {
             return [];
         }
 
+        $cacheKey = "alerts_esp";
+        $cached = self::getCache()->getIfValid($cacheKey);
+        if ($cached !== null) {
+            echo "[aemet] Cache hit for alerts\n";
+            return $cached;
+        }
+
         try {
             $datosUrl = self::getDataUrl('esp');
             $rawData = self::request($datosUrl, '*/*');
@@ -629,7 +664,9 @@ class AEMET {
                 }
             }
 
-            return self::deduplicateAlerts($allAlerts);
+            $result = self::deduplicateAlerts($allAlerts);
+            self::getCache()->set($cacheKey, $result);
+            return $result;
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching alerts: {$exc->getMessage()}\n";
             return [];
@@ -644,6 +681,13 @@ class AEMET {
         if (!self::getApiKey()) {
             echo "[aemet] AEMET_API_KEY not set, skipping daily forecast.\n";
             return ['name' => '', 'province' => '', 'issued' => '', 'days' => []];
+        }
+
+        $cacheKey = "daily_{$municipioId}";
+        $cached = self::getCache()->getIfValid($cacheKey);
+        if ($cached !== null) {
+            echo "[aemet] Cache hit for daily forecast {$municipioId}\n";
+            return $cached;
         }
 
         try {
@@ -734,12 +778,14 @@ class AEMET {
                 );
             }
 
-            return [
+            $result = [
                 'name' => $name,
                 'province' => $province,
                 'issued' => $issued,
                 'days' => $days,
             ];
+            self::getCache()->set($cacheKey, $result);
+            return $result;
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching daily forecast: {$exc->getMessage()}\n";
             return ['name' => '', 'province' => '', 'issued' => '', 'days' => []];
