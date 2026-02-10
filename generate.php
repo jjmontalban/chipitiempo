@@ -150,7 +150,25 @@ try {
         // Capturar el error inmediatamente
         $error = error_get_last();
         $errorMsg = $error ? $error['message'] : 'Unknown error';
-        throw new Exception("Cannot write to {$originalOutput}: {$errorMsg}");
+        throw new \Exception("Cannot write to {$originalOutput}: {$errorMsg}");
+    }
+    
+    // En Plesk heredado, guardar en AMBAS ubicaciones para asegurar que el servidor web lo sirva
+    // Detectar si estamos en contexto httpdocs o raíz y copiar al otro lugar
+    $alternatePath = null;
+    if (basename(__DIR__) === 'httpdocs') {
+        // Estamos en httpdocs, también guardar en la raíz
+        $parentDir = dirname(__DIR__);
+        $alternatePath = $parentDir . '/index.html';
+    } else if (basename(__DIR__) === 'chipitiempo' && is_dir(__DIR__ . '/httpdocs')) {
+        // Estamos en raíz, también guardar en httpdocs
+        $alternatePath = __DIR__ . '/httpdocs/index.html';
+    }
+    
+    // Guardar copia en ubicación alternativa
+    if ($alternatePath && $alternatePath !== $output) {
+        @file_put_contents($alternatePath, $html);
+        Logger::debug("Also saved to: {$alternatePath}");
     }
     
     $fileSize = filesize($output);
