@@ -1,0 +1,6 @@
+[2026-02-09 15:37:46] [DEBUG] Generating alert statistics
+[2026-02-09 15:37:48] [INFO] Alert statistics generated {"total_alerts":77}
+[2026-02-09 15:37:48] [INFO] Fetching alerts by severity {"severity":"red"}
+[2026-02-09 15:37:48] [INFO] Retrieved alerts by severity {"severity":"red","total":0,"valid":0,"invalid":0}
+[2026-02-09 15:37:48] [DEBUG] Generating forecast statistics {"municipality":"default"}
+[2026-02-09 15:37:48] [INFO] Forecast statistics generated {"municipality":"Chipiona","total_hours":47}

@@ -1,14 +1,16 @@
 <?php
 
+namespace ChipiTiempo;
+
 /**
- * ChipiTiempo - Esquema normalizado de alertas
+ * AUXIO - Esquema normalizado de alertas
  * 
- * Clase que representa una alerta meteorológica normalizada
- * desde AEMET
+ * Clase que representa una alerta de emergencia normalizada
+ * desde cualquier fuente (AEMET, IGN, etc)
  */
 
 class Alert {
-    public string $source;        // "aemet"
+    public string $source;        // "aemet", "ign", etc
     public string $severity;      // "red", "orange", "yellow", "green"
     public string $headline;
     public string $description;

@@ -9,21 +9,45 @@
  *   php generate.php [output_file.html]
  */
 
-require_once __DIR__ . '/src/bootstrap.php';
+require_once __DIR__ . '/src/Alert.php';
+require_once __DIR__ . '/src/AEMETForecast.php';
+require_once __DIR__ . '/src/AEMETDailyForecast.php';
+require_once __DIR__ . '/src/AlertCollector.php';
+require_once __DIR__ . '/src/ForecastCollector.php';
+require_once __DIR__ . '/src/HtmlBuilder.php';
+require_once __DIR__ . '/src/Logging/Logger.php';
+
+use ChipiTiempo\Logging\Logger;
+
+// Cargar variables de entorno
+if (file_exists(__DIR__ . '/.env')) {
+    $env = parse_ini_file(__DIR__ . '/.env');
+    foreach ($env as $key => $value) {
+        $_ENV[$key] = $value;
+        putenv("{$key}={$value}");
+    }
+}
+
+// Inicializar logger
+Logger::init(__DIR__ . '/logs/generate.log', true);  // File + console
+Logger::info("ChipiTiempo generation started");
 
 // Archivo de salida (default: index.html)
 $output = $argc > 1 ? $argv[1] : 'index.html';
 $originalOutput = $output; // Store original for error messages
 
 try {
-    // Recopilar previsión horaria (Chipiona por defecto)
-    $forecast = AlertGenerator::collectForecast();
+    // Recopilar previsiones para múltiples municipios
+    Logger::debug("Collecting forecast data");
+    $forecasts = ForecastCollector::collectMultiple();
 
-    // Recopilar alertas
-    $alerts = AlertGenerator::collectAlerts();
+    // Recopilar alertas usando AlertCollector
+    Logger::debug("Collecting alert data");
+    $alerts = AlertCollector::collect();
 
-    // Generar HTML
-    $html = AlertGenerator::renderHTML($alerts, $forecast);
+    // Generar HTML usando HtmlBuilder
+    Logger::debug("Building HTML page");
+    $html = HtmlBuilder::buildPage($alerts, $forecasts);
     
     // Asegurar que el directorio existe
     $outputDir = dirname($output);
@@ -69,10 +93,19 @@ try {
     }
     
     $fileSize = filesize($output);
-    $forecastCount = count($forecast['hours'] ?? []);
-    echo "[chipitiempo] {$output} generado ($fileSize bytes, {$forecastCount} horas de previsión, " . count($alerts) . " alertas)\n";
+    $forecastCount = 0;
+    foreach ($forecasts as $forecast) {
+        $forecastCount += count($forecast['hours'] ?? []);
+    }
+    $alertCount = count($alerts);
+    
+    $message = "[chipitiempo] {$output} generado ($fileSize bytes, {$forecastCount} horas de previsión, {$alertCount} alertas)";
+    Logger::info($message);
+    echo $message . "\n";
     
 } catch (Exception $exc) {
-    echo "[error] " . $exc->getMessage() . "\n";
+    $message = "[error] " . $exc->getMessage();
+    Logger::error($message);
+    echo $message . "\n";
     exit(1);
 }

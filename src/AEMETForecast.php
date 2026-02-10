@@ -1,10 +1,12 @@
 <?php
 
+namespace ChipiTiempo;
+
 /**
- * ChipiTiempo - Modelo de datos para previsión meteorológica horaria
+ * ChipiTiempo - Modelo de datos para previsión meteorológica AEMET horaria
  */
 
-class HourlyForecast {
+class AEMETForecast {
     public string $datetime;        // ISO datetime (fecha + hora)
     public ?int $temperature;       // °C
     public ?int $feelsLike;         // °C (sensación térmica)
