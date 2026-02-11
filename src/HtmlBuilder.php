@@ -261,7 +261,7 @@ HTML;
             '82' => '⛈️',  // Tormenta
         ];
         
-        return $emojiMap[$code] ?? '🌡️'; // Emoji por defecto si no coincide
+        return $emojiMap[$code] ?? ''; // Emoji por defecto si no coincide
     }
     
     private static function renderForecast(array $forecast, bool $title = true): string {
