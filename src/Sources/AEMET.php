@@ -54,46 +54,83 @@ class AEMET {
     }
 
     /**
-     * Hacer solicitud HTTP GET con clave API
+     * Hacer solicitud HTTP GET con clave API, con reintentos para errores transitorios
      */
     private static function request(string $url, string $accept = "application/json"): string {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'header' => implode("\r\n", [
-                    "Accept: {$accept}",
-                    "api_key: " . self::getApiKey(),
-                    "User-Agent: AUXIO/1.0",
-                ]),
-                'timeout' => 30,
-                'ignore_errors' => true, // Allow capturing HTTP error responses
-            ]
-        ]);
-
-        $response = @file_get_contents($url, false, $context);
-        if ($response === false) {
-            $error = error_get_last();
-            throw new \Exception("Error fetching {$url}: " . ($error['message'] ?? 'Unknown error'));
-        }
+        $maxRetries = 3;
+        $retryDelay = 1; // segundos
+        $lastException = null;
         
-        // Verificar código de respuesta HTTP
-        if (isset($http_response_header)) {
-            $statusLine = $http_response_header[0] ?? '';
-            preg_match('/HTTP\/\d\.\d\s+(\d+)/', $statusLine, $matches);
-            $statusCode = $matches[1] ?? 0;
-            
-            if ($statusCode >= 400) {
-                throw new \Exception("HTTP {$statusCode} error for {$url}");
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $context = stream_context_create([
+                    'http' => [
+                        'method' => 'GET',
+                        'header' => implode("\r\n", [
+                            "Accept: {$accept}",
+                            "api_key: " . self::getApiKey(),
+                            "User-Agent: AUXIO/1.0",
+                        ]),
+                        'timeout' => 30,
+                        'ignore_errors' => true, // Allow capturing HTTP error responses
+                    ]
+                ]);
+
+                $response = @file_get_contents($url, false, $context);
+                if ($response === false) {
+                    $error = error_get_last();
+                    throw new \Exception("Error fetching {$url}: " . ($error['message'] ?? 'Unknown error'));
+                }
+                
+                // Verificar código de respuesta HTTP
+                if (isset($http_response_header)) {
+                    $statusLine = $http_response_header[0] ?? '';
+                    preg_match('/HTTP\/\d\.\d\s+(\d+)/', $statusLine, $matches);
+                    $statusCode = $matches[1] ?? 0;
+                    
+                    // 429 (Too Many Requests) y 503 (Service Unavailable) son transitorios, reintentar
+                    if ($statusCode == 429 || $statusCode == 503) {
+                        throw new \Exception("HTTP {$statusCode} error (transient) for {$url}");
+                    }
+                    
+                    if ($statusCode >= 400) {
+                        throw new \Exception("HTTP {$statusCode} error for {$url}");
+                    }
+                }
+                
+                // Fijar encoding: detectar e intentar convertir a UTF-8 si es necesario
+                // AEMET a veces devuelve Latin-1 a pesar de decir que es UTF-8
+                if (!mb_check_encoding($response, 'UTF-8')) {
+                    $response = mb_convert_encoding($response, 'UTF-8', 'ISO-8859-1,UTF-8,ASCII');
+                }
+                
+                return $response;
+                
+            } catch (\Exception $e) {
+                $lastException = $e;
+                
+                // Si no es el último intento y es un error transitorio, esperar y reintentar
+                if ($attempt < $maxRetries) {
+                    $errorMsg = $e->getMessage();
+                    // Reintentar en errores de red o HTTP 429/503
+                    if (str_contains($errorMsg, 'getaddrinfo') || 
+                        str_contains($errorMsg, 'Connection refused') ||
+                        str_contains($errorMsg, 'Connection timed out') ||
+                        str_contains($errorMsg, 'transient')) {
+                        echo "[aemet] Attempt {$attempt} failed: {$errorMsg}. Retrying in {$retryDelay}s...\n";
+                        sleep($retryDelay);
+                        $retryDelay *= 2; // Exponential backoff
+                        continue;
+                    }
+                }
+                
+                // Si no es transitorio o es el último intento, lanzar la excepción
+                throw $e;
             }
         }
         
-        // Fijar encoding: detectar e intentar convertir a UTF-8 si es necesario
-        // AEMET a veces devuelve Latin-1 a pesar de decir que es UTF-8
-        if (!mb_check_encoding($response, 'UTF-8')) {
-            $response = mb_convert_encoding($response, 'UTF-8', 'ISO-8859-1,UTF-8,ASCII');
-        }
-        
-        return $response;
+        // Si llegamos aquí, todos los reintentos fallaron
+        throw $lastException ?? new \Exception("Request failed after {$maxRetries} attempts");
     }
 
     /**
@@ -489,6 +526,14 @@ class AEMET {
             return $result;
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching hourly forecast: {$exc->getMessage()}\n";
+            
+            // Intentar usar cache expirado como fallback
+            $staleCache = self::getCache()->getStale($cacheKey);
+            if ($staleCache !== null && !empty($staleCache['hours'])) {
+                echo "[aemet] Using stale cache as fallback for hourly forecast {$municipioId}\n";
+                return $staleCache;
+            }
+            
             return ['name' => '', 'province' => '', 'issued' => '', 'hours' => []];
         }
     }
@@ -669,6 +714,14 @@ class AEMET {
             return $result;
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching alerts: {$exc->getMessage()}\n";
+            
+            // Intentar usar cache expirado como fallback
+            $staleCache = self::getCache()->getStale($cacheKey);
+            if ($staleCache !== null && !empty($staleCache)) {
+                echo "[aemet] Using stale cache as fallback for alerts\n";
+                return $staleCache;
+            }
+            
             return [];
         }
     }
@@ -788,6 +841,14 @@ class AEMET {
             return $result;
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching daily forecast: {$exc->getMessage()}\n";
+            
+            // Intentar usar cache expirado como fallback
+            $staleCache = self::getCache()->getStale($cacheKey);
+            if ($staleCache !== null && !empty($staleCache['days'])) {
+                echo "[aemet] Using stale cache as fallback for daily forecast {$municipioId}\n";
+                return $staleCache;
+            }
+            
             return ['name' => '', 'province' => '', 'issued' => '', 'days' => []];
         }
     }

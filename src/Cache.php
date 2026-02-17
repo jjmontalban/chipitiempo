@@ -98,6 +98,16 @@ class Cache {
     }
     
     /**
+     * Obtener datos del cache incluso si está expirado (fallback para cuando la API falla)
+     * 
+     * @param string $key Clave del cache
+     * @return mixed|null Datos si existen (aunque estén expirados), null si no existen
+     */
+    public function getStale(string $key): mixed {
+        return $this->get($key);
+    }
+    
+    /**
      * Limpiar cache expirado
      */
     public function cleanup(): void {
