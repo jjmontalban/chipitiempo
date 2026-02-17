@@ -98,6 +98,20 @@ class Cache {
     }
     
     /**
+     * Obtener datos del cache incluso si está expirado (fallback para cuando la API falla)
+     * 
+     * Nota: Este método deliberadamente NO verifica si el cache está expirado.
+     * Se usa como fallback cuando la API falla, para servir datos antiguos en lugar de no mostrar nada.
+     * 
+     * @param string $key Clave del cache
+     * @return mixed|null Datos si existen (aunque estén expirados), null si no existen
+     */
+    public function getStale(string $key): mixed {
+        // Llamar directamente a get() que NO verifica expiración
+        return $this->get($key);
+    }
+    
+    /**
      * Limpiar cache expirado
      */
     public function cleanup(): void {
