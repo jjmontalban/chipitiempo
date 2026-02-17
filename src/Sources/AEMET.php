@@ -28,6 +28,10 @@ class AEMET {
     private const DAILY_ENDPOINT = "/api/prediccion/especifica/municipio/diaria/{municipio}";
     private const CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2";
     private const CACHE_TTL = 300; // 5 minutos
+    
+    // Configuración de reintentos para peticiones HTTP
+    private const MAX_RETRIES = 3;
+    private const INITIAL_RETRY_DELAY = 1; // segundos
 
     private const SEVERITY_MAP = [
         "Extreme" => "red",
@@ -57,8 +61,8 @@ class AEMET {
      * Hacer solicitud HTTP GET con clave API, con reintentos para errores transitorios
      */
     private static function request(string $url, string $accept = "application/json"): string {
-        $maxRetries = 3;
-        $retryDelay = 1; // segundos
+        $maxRetries = self::MAX_RETRIES;
+        $retryDelay = self::INITIAL_RETRY_DELAY;
         $lastException = null;
         
         for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
