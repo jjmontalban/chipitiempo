@@ -247,3 +247,8 @@
 [2026-02-10 10:21:18] [DEBUG] Collecting alert data
 [2026-02-10 10:21:18] [DEBUG] Building HTML page
 [2026-02-10 10:21:18] [INFO] [chipitiempo] index.html generado (52399 bytes, 235 horas de previsión, 81 alertas)
+[2026-02-17 20:34:46] [INFO] ChipiTiempo generation started
+[2026-02-17 20:34:46] [DEBUG] Collecting forecast data
+[2026-02-17 20:34:46] [DEBUG] Collecting alert data
+[2026-02-17 20:34:46] [DEBUG] Building HTML page
+[2026-02-17 20:34:46] [INFO] [chipitiempo] /tmp/test_output.html generado (4429 bytes, 0 horas de previsión, 0 alertas)
