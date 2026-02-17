@@ -165,7 +165,8 @@ HTML;
      */
     public static function buildWeatherSection(array $forecasts): string {
         if (empty($forecasts)) {
-            return "<p>No hay datos disponibles.</p>\n";
+            return "<p><strong>No hay datos de previsión disponibles en este momento.</strong></p>\n" .
+                   "<p><small>Es posible que el servicio de AEMET esté temporalmente inaccesible. Los datos se actualizarán automáticamente cuando el servicio esté disponible.</small></p>\n";
         }
         
         if (isset($forecasts['name'])) {
