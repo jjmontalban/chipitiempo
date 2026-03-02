@@ -232,7 +232,7 @@ HTML;
     
     /**
      * Mapeo de códigos AEMET a emojis meteorológicos
-     * AEMET usa códigos WMO modificados (1-99)
+     * AEMET usa códigos numéricos para el estado del cielo (estadoCielo)
      */
     private static function getWeatherEmoji(?string $skyCode): string {
         if (!$skyCode) return '';
@@ -241,28 +241,76 @@ HTML;
         $code = str_replace('n', '', $skyCode);
         
         $emojiMap = [
-            // Cielo despejado/poco nuboso
-            '1' => '☀️',   // Despejado (día)
-            '2' => '🌤️',   // Poco nuboso
-            '3' => '⛅',   // Parcialmente nuboso
-            
-            // Nubosidad
-            '15' => '⛅',  // Poco nuboso
-            '16' => '☁️',  // Cubierto
-            
-            // Precipitación
-            '46' => '🌧️',  // Lluvia escasa
+            // Cielo despejado/poco nuboso (formato de un dígito y dos dígitos)
+            '1'  => '☀️',   // Despejado
+            '11' => '☀️',   // Despejado
+            '2'  => '🌤️',  // Poco nuboso
+            '12' => '🌤️',  // Poco nuboso
+            '3'  => '⛅',   // Intervalos nubosos
+            '13' => '⛅',   // Intervalos nubosos
+            '14' => '🌥️',  // Nuboso
+            '15' => '☁️',   // Muy nuboso
+            '16' => '☁️',   // Cubierto
+            '17' => '🌤️',  // Nubes altas
+
+            // Lluvia escasa (drizzle)
+            '23' => '🌦️',  // Intervalos nubosos con lluvia escasa
+            '24' => '🌧️',  // Nuboso con lluvia escasa
+            '25' => '🌧️',  // Muy nuboso con lluvia escasa
+            '26' => '🌧️',  // Cubierto con lluvia escasa
+
+            // Nieve escasa
+            '33' => '🌨️',  // Intervalos nubosos con nieve escasa
+            '34' => '🌨️',  // Nuboso con nieve escasa
+            '35' => '🌨️',  // Muy nuboso con nieve escasa
+            '36' => '❄️',   // Cubierto con nieve escasa
+
+            // Lluvia
+            '43' => '🌧️',  // Intervalos nubosos con lluvia
+            '44' => '🌧️',  // Nuboso con lluvia
+            '45' => '🌧️',  // Muy nuboso con lluvia
+            '46' => '🌧️',  // Cubierto con lluvia
+
+            // Nieve
+            '51' => '🌨️',  // Intervalos nubosos con nieve
+            '52' => '🌨️',  // Nuboso con nieve
+            '53' => '🌨️',  // Muy nuboso con nieve
+            '54' => '❄️',   // Cubierto con nieve
+
+            // Tormenta
+            '61' => '⛈️',  // Intervalos nubosos con tormenta
+            '62' => '⛈️',  // Nuboso con tormenta
+            '63' => '⛈️',  // Muy nuboso con tormenta
+            '64' => '⛈️',  // Cubierto con tormenta
+
+            // Tormenta con nieve
+            '71' => '⛈️',  // Intervalos nubosos con nieve y tormenta
+            '72' => '⛈️',  // Nuboso con nieve y tormenta
+            '73' => '⛈️',  // Muy nuboso con nieve y tormenta
+            '74' => '⛈️',  // Cubierto con nieve y tormenta
+
+            // Códigos de uso interno/legacy
+            '80' => '🌦️',  // Lluvia débil
             '81' => '🌧️',  // Lluvia moderada
             '82' => '⛈️',  // Lluvia fuerte/tormentas
-            
-            // Fenómenos especiales
-            '80' => '🌦️',  // Lluvia débil
-            '62' => '❄️',  // Nieve
-            '51' => '🌫️',  // Niebla
-            '82' => '⛈️',  // Tormenta
         ];
         
-        return $emojiMap[$code] ?? ''; // Emoji por defecto si no coincide
+        return $emojiMap[$code] ?? '';
+    }
+
+    /**
+     * Determinar si un código de cielo AEMET indica precipitación activa
+     * (lluvia escasa: 23-26, nieve escasa: 33-36, lluvia: 43-46,
+     *  nieve: 51-54, tormenta: 61-64, tormenta+nieve: 71-74, legacy: 80-82)
+     */
+    private static function isRainCode(?string $skyCode): bool {
+        if (!$skyCode) return false;
+        $code = str_replace('n', '', $skyCode);
+        $precipCodes = ['23', '24', '25', '26', '33', '34', '35', '36',
+                        '43', '44', '45', '46', '51', '52', '53', '54',
+                        '61', '62', '63', '64', '71', '72', '73', '74',
+                        '80', '81', '82'];
+        return in_array($code, $precipCodes);
     }
     
     private static function renderForecast(array $forecast, bool $title = true): string {
@@ -311,8 +359,14 @@ HTML;
                 $probClass = $h->precipProb >= 60 ? ' class="rain-high"' : ($h->precipProb >= 30 ? ' class="rain-med"' : '');
                 $sky = $h->skyDescription ? htmlspecialchars($h->skyDescription, ENT_QUOTES, 'UTF-8') : '-';
                 
-                // Generar emoji icono basado en el código AEMET
+                // Generar emoji icono basado en el código AEMET.
+                // Si la probabilidad de lluvia es significativa (≥40%) pero el código
+                // del cielo no indica precipitación activa, mostrar icono de lluvia
+                // posible para mantener coherencia visual con la columna de probabilidad.
                 $iconEmoji = self::getWeatherEmoji($h->skyCode);
+                if (!self::isRainCode($h->skyCode) && $h->precipProb !== null && $h->precipProb >= 40) {
+                    $iconEmoji = '🌦️';
+                }
                 $iconHtml = $iconEmoji ? "<span style=\"font-size:28px;\">{$iconEmoji}</span>" : '';
                 
                 $windStr = '-';
