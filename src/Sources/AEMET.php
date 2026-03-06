@@ -528,7 +528,7 @@ class AEMET {
             self::getCache()->set($cacheKey, $result);
             
             return $result;
-        } catch (\Exception $exc) {
+        } catch (\Throwable $exc) {
             echo "[aemet] Error fetching hourly forecast: {$exc->getMessage()}\n";
             
             // Intentar usar cache como fallback (get() no verifica expiración)
@@ -596,16 +596,28 @@ class AEMET {
     }
 
     /**
+     * Extraer valor escalar de un campo que AEMET puede devolver como array o string.
+     * Ej: ["SO"] → "SO", "SO" → "SO", ["10"] → "10"
+     */
+    private static function extractScalar(mixed $value): string {
+        if (is_array($value)) {
+            return (string)($value[0] ?? '');
+        }
+        return (string)$value;
+    }
+
+    /**
      * Indexar viento desde campo "viento" (direccion, velocidad, periodo)
      * Soporta periodos: "00" (individual), "0006" (concatenado), "00-06" (con guion)
+     * AEMET puede devolver "direccion" y "velocidad" como arrays (ej: ["SO"]) o strings.
      */
     private static function indexWind(array $entries): array {
         $indexed = [];
         foreach ($entries as $entry) {
             $periodo = $entry['periodo'] ?? '';
             if ($periodo === '') continue;
-            $dir = $entry['direccion'] ?? '';
-            $speed = $entry['velocidad'] ?? '';
+            $dir = self::extractScalar($entry['direccion'] ?? '');
+            $speed = self::extractScalar($entry['velocidad'] ?? '');
             if ($dir === '' && $speed === '') continue;
 
             $windVal = [
