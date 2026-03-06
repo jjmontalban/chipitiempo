@@ -50,24 +50,4 @@ class Alert {
         $this->sender = $sender;
         $this->web = $web;
     }
-
-    /**
-     * Convertir alerta a array para JSON
-     */
-    public function toArray(): array {
-        return [
-            'source' => $this->source,
-            'severity' => $this->severity,
-            'headline' => $this->headline,
-            'description' => $this->description,
-            'area' => $this->area,
-            'event_type' => $this->event_type,
-            'onset' => $this->onset,
-            'expires' => $this->expires,
-            'certainty' => $this->certainty,
-            'urgency' => $this->urgency,
-            'sender' => $this->sender,
-            'web' => $this->web,
-        ];
-    }
 }

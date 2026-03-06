@@ -6,6 +6,10 @@ namespace ChipiTiempo;
  * ChipiTiempo - Modelo de datos para previsión meteorológica AEMET horaria
  */
 
+require_once __DIR__ . '/Config/AppConfig.php';
+
+use ChipiTiempo\Config\AppConfig;
+
 class AEMETForecast {
     public string $datetime;        // ISO datetime (fecha + hora)
     public ?int $temperature;       // °C
@@ -45,37 +49,10 @@ class AEMETForecast {
         $this->skyCode = $skyCode;
     }
 
-    public function toArray(): array {
-        return [
-            'datetime' => $this->datetime,
-            'temperature' => $this->temperature,
-            'feels_like' => $this->feelsLike,
-            'humidity' => $this->humidity,
-            'precip_prob' => $this->precipProb,
-            'precip_amount' => $this->precipAmount,
-            'wind_dir' => $this->windDir,
-            'wind_speed' => $this->windSpeed,
-            'wind_gust' => $this->windGust,
-            'sky_description' => $this->skyDescription,
-            'sky_code' => $this->skyCode,
-        ];
-    }
-
     /**
      * Obtener flecha Unicode para la dirección del viento
      */
     public function windArrow(): string {
-        return match ($this->windDir) {
-            'N'  => "\u{2191}",  // ↑
-            'NE' => "\u{2197}",  // ↗
-            'E'  => "\u{2192}",  // →
-            'SE' => "\u{2198}",  // ↘
-            'S'  => "\u{2193}",  // ↓
-            'SO' => "\u{2199}",  // ↙
-            'O'  => "\u{2190}",  // ←
-            'NO' => "\u{2196}",  // ↖
-            'C'  => "\u{25CB}",  // ○ (calma)
-            default => '',
-        };
+        return AppConfig::windArrow($this->windDir);
     }
 }

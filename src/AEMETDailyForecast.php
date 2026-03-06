@@ -5,6 +5,11 @@ namespace ChipiTiempo;
 /**
  * AEMETDailyForecast - Pronóstico diario de AEMET
  */
+
+require_once __DIR__ . '/Config/AppConfig.php';
+
+use ChipiTiempo\Config\AppConfig;
+
 class AEMETDailyForecast {
     public function __construct(
         public string $date,              // YYYY-MM-DD
@@ -21,10 +26,6 @@ class AEMETDailyForecast {
      * Retornar flecha con dirección del viento
      */
     public function windArrow(): string {
-        $arrows = [
-            'N' => '↑', 'NE' => '↗', 'E' => '→', 'SE' => '↘',
-            'S' => '↓', 'SO' => '↙', 'O' => '←', 'NO' => '↖',
-        ];
-        return $arrows[$this->windDir] ?? '';
+        return AppConfig::windArrow($this->windDir);
     }
 }

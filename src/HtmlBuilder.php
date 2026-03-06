@@ -8,16 +8,9 @@
 
 require_once __DIR__ . '/Config/AppConfig.php';
 
+use ChipiTiempo\Config\AppConfig;
+
 class HtmlBuilder {
-    private const SEVERITY_EMOJI = ["red" => "🔴", "orange" => "🟠", "yellow" => "🟡", "green" => "✅"];
-    
-    private const CADIZ_MUNICIPALITIES = [
-        'Algeciras', 'Arcos de la Frontera', 'Barbate', 'Cádiz (capital)', 'Chiclana de la Frontera',
-        'Chipiona', 'Conil de la Frontera', 'El Puerto de Santa María', 'Espera', 'Grazalema',
-        'Jerez de la Frontera', 'Jimena de la Frontera', 'La Línea de la Concepción', 'Los Barrios',
-        'Medina-Sidonia', 'Olvera', 'Prado del Rey', 'Puerto Real', 'Rota', 'San Fernando',
-        'San Roque', 'Sanlúcar de Barrameda', 'Tarifa', 'Ubrique', 'Vejer de la Frontera',
-    ];
 
     /**
      * Construir página HTML completa
@@ -439,7 +432,7 @@ HTML;
         foreach ($grouped as $source => $sourceAlerts) {
             $html .= "<div class=\"src-group\">\n<h3>" . htmlspecialchars(ucfirst($source), ENT_QUOTES, 'UTF-8') . "</h3>\n<ul>\n";
             foreach ($sourceAlerts as $alert) {
-                $emoji = self::SEVERITY_EMOJI[$alert->severity] ?? "";
+                $emoji = AppConfig::SEVERITY_EMOJIS[$alert->severity] ?? "";
                 $headline = htmlspecialchars($alert->headline ?: $alert->description, ENT_QUOTES, 'UTF-8');
                 $areaHtml = $alert->area ? "<br><small>Zona: " . htmlspecialchars($alert->area, ENT_QUOTES, 'UTF-8') . "</small>" : '';
                 
@@ -485,7 +478,7 @@ HTML;
     private static function extractMunicipalities(string $area): array {
         if (!$area) return [];
         $matched = [];
-        foreach (self::CADIZ_MUNICIPALITIES as $municipality) {
+        foreach (AppConfig::CADIZ_MUNICIPALITIES as $municipality) {
             $municName = str_replace(' (capital)', '', $municipality);
             if (mb_stripos($area, $municName) !== false) {
                 $matched[] = $municipality;
