@@ -500,16 +500,17 @@ class AEMET {
 
                     $skyEntry = $sky[$periodo] ?? null;
 
+                    $periodInt = (int)$periodo;
                     $hours[] = new AEMETForecast(
                         datetime: $datetime,
                         temperature: $tempVal !== null ? (int)$tempVal : null,
                         feelsLike: isset($feels[$periodo]) ? (int)$feels[$periodo] : null,
                         humidity: isset($humidity[$periodo]) ? (int)$humidity[$periodo] : null,
-                        precipProb: $precipProb[$periodo] ?? null,
+                        precipProb: $precipProb[$periodInt] ?? null,
                         precipAmount: $precip[$periodo] ?? null,
-                        windDir: $wind[$periodo]['dir'] ?? null,
-                        windSpeed: $wind[$periodo]['speed'] ?? null,
-                        windGust: $gusts[$periodo] ?? null,
+                        windDir: $wind[$periodInt]['dir'] ?? null,
+                        windSpeed: $wind[$periodInt]['speed'] ?? null,
+                        windGust: $gusts[$periodInt] ?? null,
                         skyDescription: is_array($skyEntry) ? ($skyEntry['descripcion'] ?? null) : null,
                         skyCode: is_array($skyEntry) ? ($skyEntry['value'] ?? null) : (($skyEntry !== null) ? (string)$skyEntry : null),
                     );
@@ -596,6 +597,7 @@ class AEMET {
 
     /**
      * Indexar viento desde campo "viento" (direccion, velocidad, periodo)
+     * Soporta periodos: "00" (individual), "0006" (concatenado), "00-06" (con guion)
      */
     private static function indexWind(array $entries): array {
         $indexed = [];
@@ -604,11 +606,31 @@ class AEMET {
             if ($periodo === '') continue;
             $dir = $entry['direccion'] ?? '';
             $speed = $entry['velocidad'] ?? '';
-            if ($dir !== '' || $speed !== '') {
-                $indexed[(int)$periodo] = [
-                    'dir' => $dir !== '' ? $dir : null,
-                    'speed' => $speed !== '' ? (int)$speed : null,
-                ];
+            if ($dir === '' && $speed === '') continue;
+
+            $windVal = [
+                'dir' => $dir !== '' ? $dir : null,
+                'speed' => $speed !== '' ? (int)$speed : null,
+            ];
+
+            if (strpos($periodo, '-') !== false) {
+                // Rango con guion (ej: "00-06", "06-12")
+                $parts = explode('-', $periodo);
+                $start = (int)$parts[0];
+                $end = (int)$parts[1];
+                for ($h = $start; $h < $end; $h++) {
+                    $indexed[$h] = $windVal;
+                }
+            } elseif (strlen($periodo) > 2) {
+                // Rango concatenado (ej: "0006", "0612")
+                $start = (int)substr($periodo, 0, 2);
+                $end = (int)substr($periodo, 2, 2);
+                for ($h = $start; $h < $end; $h++) {
+                    $indexed[$h] = $windVal;
+                }
+            } else {
+                // Periodo individual (ej: "00", "01")
+                $indexed[(int)$periodo] = $windVal;
             }
         }
         return $indexed;
