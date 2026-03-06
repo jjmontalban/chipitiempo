@@ -530,7 +530,7 @@ class AEMET {
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching hourly forecast: {$exc->getMessage()}\n";
             
-            // Intentar usar cache expirado como fallback
+            // Intentar usar cache como fallback (get() no verifica expiración)
             $staleCache = self::getCache()->get($cacheKey);
             if ($staleCache !== null && !empty($staleCache['hours'])) {
                 echo "[aemet] Using stale cache as fallback for hourly forecast {$municipioId}\n";
@@ -718,7 +718,7 @@ class AEMET {
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching alerts: {$exc->getMessage()}\n";
             
-            // Intentar usar cache expirado como fallback
+            // Intentar usar cache como fallback (get() no verifica expiración)
             $staleCache = self::getCache()->get($cacheKey);
             if ($staleCache !== null && !empty($staleCache)) {
                 echo "[aemet] Using stale cache as fallback for alerts\n";
@@ -845,7 +845,7 @@ class AEMET {
         } catch (\Exception $exc) {
             echo "[aemet] Error fetching daily forecast: {$exc->getMessage()}\n";
             
-            // Intentar usar cache expirado como fallback
+            // Intentar usar cache como fallback (get() no verifica expiración)
             $staleCache = self::getCache()->get($cacheKey);
             if ($staleCache !== null && !empty($staleCache['days'])) {
                 echo "[aemet] Using stale cache as fallback for daily forecast {$municipioId}\n";
