@@ -7,7 +7,9 @@
  */
 
 require_once __DIR__ . '/Sources/AEMET.php';
+require_once __DIR__ . '/Logging/Logger.php';
 
+use ChipiTiempo\Logging\Logger;
 use ChipiTiempo\Sources\AEMET as AEMETSource;
 
 class AlertCollector {
@@ -19,7 +21,7 @@ class AlertCollector {
      */
     public static function collect(): array {
         $alerts = AEMETSource::fetch();
-        echo "[AlertCollector] " . count($alerts) . " alertas de AEMET\n";
+        Logger::info("[AlertCollector] " . count($alerts) . " alertas de AEMET");
         return $alerts;
     }
 }
