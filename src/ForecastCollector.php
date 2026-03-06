@@ -8,8 +8,10 @@
 
 require_once __DIR__ . '/Sources/AEMET.php';
 require_once __DIR__ . '/Config/AppConfig.php';
+require_once __DIR__ . '/Logging/Logger.php';
 
 use ChipiTiempo\Config\AppConfig;
+use ChipiTiempo\Logging\Logger;
 use ChipiTiempo\Sources\AEMET as AEMETSource;
 
 class ForecastCollector {
@@ -25,7 +27,7 @@ class ForecastCollector {
         $code = AppConfig::getMunicipalityCode($municipality);
         
         if (!$code) {
-            echo "[ForecastCollector] Unknown municipality: {$municipality}\n";
+            Logger::warning("[ForecastCollector] Unknown municipality: {$municipality}");
             return ['name' => $municipality, 'province' => '', 'issued' => '', 'hours' => [], 'daily_hours' => []];
         }
         
@@ -33,7 +35,7 @@ class ForecastCollector {
             // Obtener previsión horaria (3 días)
             $forecast = AEMETSource::fetchHourlyForecast($code);
             $count = count($forecast['hours'] ?? []);
-            echo "[ForecastCollector] {$count} horas de previsión para {$municipality}\n";
+            Logger::info("[ForecastCollector] {$count} horas de previsión para {$municipality}");
             
             // Normalizar el nombre: usar el nombre solicitado en lugar del devuelto por AEMET
             $forecast['name'] = $municipality;
@@ -41,6 +43,7 @@ class ForecastCollector {
             // Obtener previsión diaria (días 4+)
             $dailyForecast = AEMETSource::fetchDailyForecast($code);
             $dailyCount = count($dailyForecast['days'] ?? []);
+            Logger::debug("[ForecastCollector] {$dailyCount} días en previsión diaria para {$municipality}");
             
             // Filtrar días que ya están cubiertos por la previsión horaria
             // La previsión horaria suele tener 3 días (hoy, mañana, pasado mañana)
@@ -63,12 +66,12 @@ class ForecastCollector {
             $forecast['daily_hours'] = $dailyHours;
             
             if (!empty($dailyHours)) {
-                echo "[ForecastCollector] " . count($dailyHours) . " días adicionales de previsión diaria para {$municipality}\n";
+                Logger::info("[ForecastCollector] " . count($dailyHours) . " días adicionales de previsión diaria para {$municipality}");
             }
             
             return $forecast;
         } catch (Exception $exc) {
-            echo "[ForecastCollector] Error: {$exc->getMessage()}\n";
+            Logger::error("[ForecastCollector] Error: {$exc->getMessage()}");
             return ['name' => $municipality, 'province' => '', 'issued' => '', 'hours' => [], 'daily_hours' => []];
         }
     }
@@ -79,13 +82,7 @@ class ForecastCollector {
      * @return array Array de previsiones por municipio
      */
     public static function collectMultiple(): array {
-        $municipalities = [
-            'Chipiona',
-            'Rota',
-            'Sanlúcar de Barrameda',
-            'Jerez de la Frontera',
-            'Cádiz (capital)',
-        ];
+        $municipalities = AppConfig::DEFAULT_MUNICIPALITIES;
 
         $forecasts = [];
         foreach ($municipalities as $municipality) {

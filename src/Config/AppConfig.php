@@ -17,6 +17,15 @@ class AppConfig {
     
     /** Municipio por defecto para previsión */
     public const DEFAULT_MUNICIPALITY = 'Chipiona';
+
+    /** Municipios principales mostrados por defecto en la página */
+    public const DEFAULT_MUNICIPALITIES = [
+        'Chipiona',
+        'Rota',
+        'Sanlúcar de Barrameda',
+        'Jerez de la Frontera',
+        'Cádiz (capital)',
+    ];
     
     // =========================================================================
     // SEVERIDAD DE ALERTAS

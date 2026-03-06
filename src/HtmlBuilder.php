@@ -317,7 +317,8 @@ HTML;
         $header = $title ? "<h2>PREVISI&Oacute;N HORARIA &mdash; {$location}</h2>\n" : "<h3>{$name}</h3>\n";
         
         // Filtrar solo pronóstico futuro: si estamos a las 9:30, mostrar desde las 10:00
-        $now = new \DateTime('now', new \DateTimeZone('UTC'));
+        // AEMET devuelve fechas en hora local España → comparar en Europe/Madrid
+        $now = new \DateTime('now', new \DateTimeZone('Europe/Madrid'));
         $minutes = (int)$now->format('i');
         
         if ($minutes > 0) {
@@ -367,7 +368,7 @@ HTML;
                     $arrow = $h->windArrow();
                     $windStr = "{$arrow} {$h->windDir} {$h->windSpeed} km/h";
                     if ($h->windGust !== null && $h->windGust > $h->windSpeed) {
-                        $windStr .= " <small>(racha {$h->windGust})</small>";
+                        $windStr .= " <small>(racha {$h->windGust} km/h)</small>";
                     }
                 }
 
@@ -382,8 +383,9 @@ HTML;
     private static function formatDateLabel(string $date): string {
         $months = [1 => 'enero', 2 => 'febrero', 3 => 'marzo', 4 => 'abril', 5 => 'mayo', 6 => 'junio',
                    7 => 'julio', 8 => 'agosto', 9 => 'septiembre', 10 => 'octubre', 11 => 'noviembre', 12 => 'diciembre'];
-        $today = date('Y-m-d');
-        $tomorrow = date('Y-m-d', strtotime('+1 day'));
+        $tz = new \DateTimeZone('Europe/Madrid');
+        $today = (new \DateTime('today', $tz))->format('Y-m-d');
+        $tomorrow = (new \DateTime('tomorrow', $tz))->format('Y-m-d');
         $parts = explode('-', $date);
         $day = (int)$parts[2];
         $month = $months[(int)$parts[1]] ?? '';
