@@ -21,7 +21,6 @@ use RecursiveDirectoryIterator;
 use SimpleXMLElement;
 
 class AEMET {
-    private const API_KEY = null;  // Se lee de ENV
     private const BASE_URL = "https://opendata.aemet.es/opendata";
     private const ENDPOINT = "/api/avisos_cap/ultimoelaborado/area/{area}";
     private const HOURLY_ENDPOINT = "/api/prediccion/especifica/municipio/horaria/{municipio}";
@@ -532,7 +531,7 @@ class AEMET {
             echo "[aemet] Error fetching hourly forecast: {$exc->getMessage()}\n";
             
             // Intentar usar cache expirado como fallback
-            $staleCache = self::getCache()->getStale($cacheKey);
+            $staleCache = self::getCache()->get($cacheKey);
             if ($staleCache !== null && !empty($staleCache['hours'])) {
                 echo "[aemet] Using stale cache as fallback for hourly forecast {$municipioId}\n";
                 return $staleCache;
@@ -720,7 +719,7 @@ class AEMET {
             echo "[aemet] Error fetching alerts: {$exc->getMessage()}\n";
             
             // Intentar usar cache expirado como fallback
-            $staleCache = self::getCache()->getStale($cacheKey);
+            $staleCache = self::getCache()->get($cacheKey);
             if ($staleCache !== null && !empty($staleCache)) {
                 echo "[aemet] Using stale cache as fallback for alerts\n";
                 return $staleCache;
@@ -847,7 +846,7 @@ class AEMET {
             echo "[aemet] Error fetching daily forecast: {$exc->getMessage()}\n";
             
             // Intentar usar cache expirado como fallback
-            $staleCache = self::getCache()->getStale($cacheKey);
+            $staleCache = self::getCache()->get($cacheKey);
             if ($staleCache !== null && !empty($staleCache['days'])) {
                 echo "[aemet] Using stale cache as fallback for daily forecast {$municipioId}\n";
                 return $staleCache;
