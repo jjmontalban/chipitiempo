@@ -610,8 +610,13 @@ class AEMET {
      * Indexar viento desde campo "viento" (direccion, velocidad, periodo)
      * Soporta periodos: "00" (individual), "0006" (concatenado), "00-06" (con guion)
      * AEMET puede devolver "direccion" y "velocidad" como arrays (ej: ["SO"]) o strings.
+     * AEMET a veces devuelve un único objeto en lugar de un array de objetos.
      */
     private static function indexWind(array $entries): array {
+        // Si AEMET devuelve un único objeto (sin índice numérico), envolverlo en un array
+        if (!isset($entries[0]) && !empty($entries)) {
+            $entries = [$entries];
+        }
         $indexed = [];
         foreach ($entries as $entry) {
             $periodo = $entry['periodo'] ?? '';
@@ -650,9 +655,14 @@ class AEMET {
 
     /**
      * Indexar rachas máximas desde campo "rachaMax" (value, periodo)
-     * El periodo puede ser individual ("00") o rango ("00-06")
+     * El periodo puede ser individual ("00"), rango concatenado ("0006") o rango con guion ("00-06")
+     * AEMET a veces devuelve un único objeto en lugar de un array de objetos.
      */
     private static function indexGust(array $entries): array {
+        // Si AEMET devuelve un único objeto (sin índice numérico), envolverlo en un array
+        if (!isset($entries[0]) && !empty($entries)) {
+            $entries = [$entries];
+        }
         $indexed = [];
         foreach ($entries as $entry) {
             $periodo = $entry['periodo'] ?? '';
@@ -661,10 +671,17 @@ class AEMET {
             $gust = (int)$val;
 
             if (strpos($periodo, '-') !== false) {
-                // Rango (ej: "00-06", "06-12")
+                // Rango con guion (ej: "00-06", "06-12")
                 $parts = explode('-', $periodo);
                 $start = (int)$parts[0];
                 $end = (int)$parts[1];
+                for ($h = $start; $h < $end; $h++) {
+                    $indexed[$h] = $gust;
+                }
+            } elseif (strlen($periodo) > 2) {
+                // Rango concatenado (ej: "0006", "0612")
+                $start = (int)substr($periodo, 0, 2);
+                $end = (int)substr($periodo, 2, 2);
                 for ($h = $start; $h < $end; $h++) {
                     $indexed[$h] = $gust;
                 }
