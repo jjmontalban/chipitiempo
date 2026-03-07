@@ -849,11 +849,23 @@ class AEMET {
                 }
 
                 // Viento
+                // La API AEMET devuelve 'viento' como array de entradas (ej: [{"direccion":"SO","velocidad":"20","periodo":"0024"}])
                 $windDir = null;
                 $windSpeed = null;
                 if (isset($dayData['viento'])) {
-                    $windDir = $dayData['viento']['direccion'] ?? null;
-                    $windSpeed = isset($dayData['viento']['velocidad']) ? (int)$dayData['viento']['velocidad'] : null;
+                    $vientoEntries = (is_array($dayData['viento']) && isset($dayData['viento'][0]))
+                        ? $dayData['viento']
+                        : [$dayData['viento']];
+                    foreach ($vientoEntries as $vEntry) {
+                        if (!is_array($vEntry)) continue;
+                        $dir = self::extractScalar($vEntry['direccion'] ?? '');
+                        $speed = self::extractScalar($vEntry['velocidad'] ?? '');
+                        if ($dir !== '' || $speed !== '') {
+                            $windDir = $dir !== '' ? $dir : null;
+                            $windSpeed = $speed !== '' ? (int)$speed : null;
+                            break;
+                        }
+                    }
                 }
 
                 $days[] = new AEMETDailyForecast(
