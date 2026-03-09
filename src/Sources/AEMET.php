@@ -489,9 +489,10 @@ class AEMET {
                 // Probabilidad de precipitación (puede venir en periodos de 6h)
                 $precipProb = self::indexPrecipProb($day['probPrecipitacion'] ?? []);
 
-                // Viento (campo separado) y rachas máximas (campo separado)
-                $wind = self::indexWind($day['viento'] ?? []);
-                $gusts = self::indexGust($day['rachaMax'] ?? []);
+                // Viento y rachas máximas: la API horaria devuelve el campo combinado "vientoAndRachaMax"
+                $windAndGust = self::indexWindAndGust($day['vientoAndRachaMax'] ?? []);
+                $wind = $windAndGust['wind'];
+                $gusts = $windAndGust['gusts'];
 
                 // Generar un AEMETForecast por cada hora que tenga temperatura
                 foreach ($temps as $periodo => $tempVal) {
@@ -651,6 +652,60 @@ class AEMET {
             }
         }
         return $indexed;
+    }
+
+    /**
+     * Indexar viento y rachas desde campo "vientoAndRachaMax" (formato previsión horaria)
+     * Cada entrada tiene: direccion, velocidad, rachaMax, periodo
+     * Devuelve ['wind' => [...], 'gusts' => [...]] indexados por hora entera
+     * AEMET puede devolver los valores como arrays (ej: ["SO"]) o strings.
+     * AEMET a veces devuelve un único objeto en lugar de un array de objetos.
+     */
+    private static function indexWindAndGust(array $entries): array {
+        // Si AEMET devuelve un único objeto (sin índice numérico), envolverlo en un array
+        if (!isset($entries[0]) && !empty($entries)) {
+            $entries = [$entries];
+        }
+        $windIndexed = [];
+        $gustIndexed = [];
+        foreach ($entries as $entry) {
+            $periodo = $entry['periodo'] ?? '';
+            if ($periodo === '') continue;
+            $dir = self::extractScalar($entry['direccion'] ?? '');
+            $speed = self::extractScalar($entry['velocidad'] ?? '');
+            $gust = self::extractScalar($entry['rachaMax'] ?? '');
+
+            $windVal = [
+                'dir' => $dir !== '' ? $dir : null,
+                'speed' => $speed !== '' ? (int)$speed : null,
+            ];
+            $gustVal = ($gust !== '' && $gust !== 'Ip') ? (int)$gust : null; // 'Ip' = Imperceptible (valor inapreciable)
+
+            if (strpos($periodo, '-') !== false) {
+                // Rango con guion (ej: "00-06", "06-12")
+                $parts = explode('-', $periodo);
+                $start = (int)$parts[0];
+                $end = (int)$parts[1];
+                for ($h = $start; $h < $end; $h++) {
+                    if ($dir !== '' || $speed !== '') $windIndexed[$h] = $windVal;
+                    if ($gustVal !== null) $gustIndexed[$h] = $gustVal;
+                }
+            } elseif (strlen($periodo) === 4) {
+                // Rango concatenado (ej: "0006", "0612")
+                $start = (int)substr($periodo, 0, 2);
+                $end = (int)substr($periodo, 2, 2);
+                for ($h = $start; $h < $end; $h++) {
+                    if ($dir !== '' || $speed !== '') $windIndexed[$h] = $windVal;
+                    if ($gustVal !== null) $gustIndexed[$h] = $gustVal;
+                }
+            } else {
+                // Periodo individual (ej: "00", "01")
+                $h = (int)$periodo;
+                if ($dir !== '' || $speed !== '') $windIndexed[$h] = $windVal;
+                if ($gustVal !== null) $gustIndexed[$h] = $gustVal;
+            }
+        }
+        return ['wind' => $windIndexed, 'gusts' => $gustIndexed];
     }
 
     /**
