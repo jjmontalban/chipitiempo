@@ -21,10 +21,6 @@ class AppConfig {
     /** Municipios principales mostrados por defecto en la página */
     public const DEFAULT_MUNICIPALITIES = [
         'Chipiona',
-        'Rota',
-        'Sanlúcar de Barrameda',
-        'Jerez de la Frontera',
-        'Cádiz (capital)',
     ];
     
     // =========================================================================
