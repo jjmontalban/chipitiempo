@@ -3,16 +3,14 @@
 /**
  * ChipiTiempo - Generador de página del tiempo
  *
- * Recopila previsión horaria y alertas, genera HTML ultraligero.
+ * Recopila previsión horaria de AEMET para Chipiona y genera HTML ultraligero.
  *
  * Uso:
  *   php generate.php [output_file.html]
  */
 
-require_once __DIR__ . '/src/Alert.php';
 require_once __DIR__ . '/src/AEMETForecast.php';
 require_once __DIR__ . '/src/AEMETDailyForecast.php';
-require_once __DIR__ . '/src/AlertCollector.php';
 require_once __DIR__ . '/src/ForecastCollector.php';
 require_once __DIR__ . '/src/HtmlBuilder.php';
 require_once __DIR__ . '/src/Logging/Logger.php';
@@ -98,17 +96,13 @@ if (basename(__DIR__) === 'chipitiempo' && is_dir(__DIR__ . '/httpdocs')) {
 $originalOutput = $output; // Store original for error messages
 
 try {
-    // Recopilar previsiones para múltiples municipios
+    // Recopilar previsión para Chipiona
     Logger::debug("Collecting forecast data");
     $forecasts = ForecastCollector::collectMultiple();
 
-    // Recopilar alertas usando AlertCollector
-    Logger::debug("Collecting alert data");
-    $alerts = AlertCollector::collect();
-
     // Generar HTML usando HtmlBuilder
     Logger::debug("Building HTML page");
-    $html = HtmlBuilder::buildPage($alerts, $forecasts);
+    $html = HtmlBuilder::buildPage($forecasts);
     
     // Asegurar que el directorio existe
     $outputDir = dirname($output);
@@ -176,9 +170,8 @@ try {
     foreach ($forecasts as $forecast) {
         $forecastCount += count($forecast['hours'] ?? []);
     }
-    $alertCount = count($alerts);
     
-    $message = "[chipitiempo] {$output} generado ($fileSize bytes, {$forecastCount} horas de previsión, {$alertCount} alertas)";
+    $message = "[chipitiempo] {$output} generado ($fileSize bytes, {$forecastCount} horas de previsión)";
     Logger::info($message);
     echo $message . "\n";
     

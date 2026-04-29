@@ -3,23 +3,17 @@
 /**
  * ChipiTiempo - Constructor de HTML
  * 
- * Genera HTML para alertas y previsión meteorológica
+ * Genera HTML para previsión meteorológica de Chipiona
  */
-
-require_once __DIR__ . '/Config/AppConfig.php';
-
-use ChipiTiempo\Config\AppConfig;
 
 class HtmlBuilder {
 
     /**
      * Construir página HTML completa
      */
-    public static function buildPage(array $alerts, array $forecasts = []): string {
+    public static function buildPage(array $forecasts = []): string {
         $timestamp = time();  // Timestamp Unix actual
         $weatherHtml = self::buildWeatherSection($forecasts);
-        $municFilterHtml = self::buildMunicipalityFilter($forecasts);
-        $alertsHtml = self::buildAlertsSection($alerts);
         
         return <<<HTML
 <!DOCTYPE html>
@@ -27,20 +21,17 @@ class HtmlBuilder {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="ChipiTiempo - El tiempo en Chipiona y comarca">
+<meta name="description" content="ChipiTiempo - El tiempo en Chipiona">
 <title>ChipiTiempo - El tiempo en Chipiona</title>
 <style>
 body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; max-width: 900px; }
 h1, h2, h3 { color: #333; }
 hr { border: none; border-top: 1px solid #ddd; margin: 20px 0; }
-ul { padding-left: 20px; }
 a { color: #0066cc; }
 small { color: #666; }
 .header-line { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
 .header-line h1 { margin: 0; }
 .header-line em { margin: 0; font-size: 14px; }
-.munic-filter { margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 4px; line-height: 2; border-left: 4px solid #0066cc; }
-.munic-filter a { white-space: nowrap; }
 .forecast-scroll { overflow-x: auto; }
 .forecast { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 14px; }
 .forecast th { background: #2c3e50; color: #fff; padding: 6px 8px; text-align: left; white-space: nowrap; }
@@ -60,65 +51,13 @@ small { color: #666; }
 
 <hr>
 
-{$municFilterHtml}
-
 {$weatherHtml}
-
-<hr>
-
-<h2>ALERTAS Y AVISOS ACTIVOS</h2>
-
-{$alertsHtml}
-
-
-<p><strong>Fuentes oficiales:</strong></p>
-<ul>
-<li><strong>AEMET</strong> - Alertas meteorológicas: <a href="https://www.aemet.es/es/eltiempo/prediccion/avisos">aemet.es/avisos</a></li>
-</ul>
 
 <hr>
 
 <p><small>ChipiTiempo - Datos de <a href="https://www.aemet.es">AEMET</a>. En caso de emergencia, llama al <strong>112</strong>.</small></p>
 
 <script>
-var currentMunicipality = 'Chipiona';
-
-function updateDisplay() {
-    var forecasts = document.querySelectorAll('.forecast-section');
-    for (var i = 0; i < forecasts.length; i++) {
-        var munic = forecasts[i].getAttribute('data-munic') || '';
-        forecasts[i].style.display = (munic === currentMunicipality) ? '' : 'none';
-    }
-    
-    var alerts = document.querySelectorAll('.al');
-    for (var i = 0; i < alerts.length; i++) {
-        var munic = alerts[i].getAttribute('data-munic') || '';
-        alerts[i].style.display = (munic === currentMunicipality || munic === '') ? '' : 'none';
-    }
-    
-    var groups = document.querySelectorAll('.src-group');
-    for (var i = 0; i < groups.length; i++) {
-        var visible = false;
-        var items = groups[i].querySelectorAll('.al');
-        for (var j = 0; j < items.length; j++) {
-            if (items[j].style.display !== 'none') {
-                visible = true;
-                break;
-            }
-        }
-        groups[i].style.display = visible ? '' : 'none';
-    }
-}
-
-function fm(munic) {
-    currentMunicipality = munic;
-    updateDisplay();
-    var links = document.querySelectorAll('.munic-filter a');
-    for (var i = 0; i < links.length; i++) {
-        links[i].style.fontWeight = (links[i].getAttribute('data-munic') === munic) ? 'bold' : 'normal';
-    }
-}
-
 function updateUpdateTime() {
     var lastUpdateEl = document.getElementById('lastUpdateTime');
     if (!lastUpdateEl) return;
@@ -141,8 +80,6 @@ function updateUpdateTime() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    updateDisplay();
-    fm('Chipiona');
     updateUpdateTime();
     setInterval(updateUpdateTime, 60000);  // Actualizar cada minuto
 });
@@ -155,6 +92,9 @@ HTML;
     
     /**
      * Construir sección de previsión meteorológica
+     * 
+     * @param array $forecasts Array de previsiones indexado por municipio
+     * @return string HTML de la sección de previsión
      */
     public static function buildWeatherSection(array $forecasts): string {
         if (empty($forecasts)) {
@@ -391,101 +331,5 @@ HTML;
         $month = $months[(int)$parts[1]] ?? '';
         $prefix = ($date === $today) ? 'Hoy, ' : (($date === $tomorrow) ? 'Ma&ntilde;ana, ' : '');
         return "{$prefix}{$day} de {$month}";
-    }
-    
-    public static function buildMunicipalityFilter(array $forecasts = []): string {
-        $html = "<div class=\"munic-filter\">";
-        
-        // Solo mostrar municipios que tienen datos de previsión
-        $municipalities = array_keys($forecasts);
-        sort($municipalities);
-        
-        $first = true;
-        foreach ($municipalities as $munic) {
-            $safe = htmlspecialchars($munic, ENT_QUOTES, 'UTF-8');
-            if (!$first) {
-                $html .= " | ";
-            }
-            $html .= "<a href=\"#\" onclick=\"fm('{$safe}');return false\" data-munic=\"{$safe}\">{$safe}</a>";
-            $first = false;
-        }
-        $html .= "\n</div>\n";
-        return $html;
-    }
-    
-    public static function buildAlertsSection(array $alerts): string {
-        if (empty($alerts)) {
-            return "<p><strong>No hay alertas activas en este momento.</strong></p>\n";
-        }
-
-        // Filtrar solo alertas de Andalucía
-        $alerts = array_filter($alerts, fn($a) => self::isAndalusianAlert($a));
-        
-        if (empty($alerts)) {
-            return "<p><strong>No hay alertas en Andalucía en este momento.</strong></p>\n";
-        }
-
-        $grouped = [];
-        foreach ($alerts as $alert) {
-            $grouped[$alert->source][] = $alert;
-        }
-
-        $html = "";
-        foreach ($grouped as $source => $sourceAlerts) {
-            $html .= "<div class=\"src-group\">\n<h3>" . htmlspecialchars(ucfirst($source), ENT_QUOTES, 'UTF-8') . "</h3>\n<ul>\n";
-            foreach ($sourceAlerts as $alert) {
-                $emoji = AppConfig::SEVERITY_EMOJIS[$alert->severity] ?? "";
-                $headline = htmlspecialchars($alert->headline ?: $alert->description, ENT_QUOTES, 'UTF-8');
-                $areaHtml = $alert->area ? "<br><small>Zona: " . htmlspecialchars($alert->area, ENT_QUOTES, 'UTF-8') . "</small>" : '';
-                
-                $municipalities = self::extractMunicipalities($alert->area ?? '');
-                $munic = $municipalities ? htmlspecialchars($municipalities[0], ENT_QUOTES, 'UTF-8') : '';
-                
-                $html .= "<li class=\"al\" data-munic=\"{$munic}\">{$emoji} <strong>{$headline}</strong>{$areaHtml}</li>\n";
-            }
-            $html .= "</ul>\n</div>\n";
-        }
-        return $html;
-    }
-    
-    private static function isAndalusianAlert($alert): bool {
-        if (!$alert->area) {
-            return false;
-        }
-        
-        $area = mb_strtolower($alert->area);
-        
-        // Provincias de Andalucía
-        $andalusianRegions = [
-            'almería',
-            'cádiz',
-            'córdoba',
-            'granada',
-            'huelva',
-            'jaén',
-            'málaga',
-            'sevilla',
-            'andalucía',
-        ];
-        
-        foreach ($andalusianRegions as $region) {
-            if (mb_strpos($area, $region) !== false) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    private static function extractMunicipalities(string $area): array {
-        if (!$area) return [];
-        $matched = [];
-        foreach (AppConfig::CADIZ_MUNICIPALITIES as $municipality) {
-            $municName = str_replace(' (capital)', '', $municipality);
-            if (mb_stripos($area, $municName) !== false) {
-                $matched[] = $municipality;
-            }
-        }
-        return array_unique($matched);
     }
 }
