@@ -120,8 +120,6 @@ class AEMET {
         throw $lastException ?? new \Exception("Request failed after {$maxRetries} attempts");
     }
 
-
-
     /**
      * Obtener la URL de datos para previsión horaria de un municipio
      */
