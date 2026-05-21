@@ -5,13 +5,11 @@ Generador de página del tiempo para Chipiona y la comarca de Cádiz (España), 
 ## ¿Qué hace?
 
 - Obtiene la **previsión horaria** (3 días) y **diaria** (días adicionales) para los municipios principales de la provincia de Cádiz.
-- Descarga las **alertas meteorológicas** activas en Andalucía.
 - Genera un único fichero **`index.html`** ultraligero y sin dependencias externas.
 
 ## Requisitos
 
 - PHP 8.1 o superior
-- Extensión `phar` habilitada (para descomprimir archivos TAR de alertas)
 - Clave de API de AEMET OpenData (gratuita en [opendata.aemet.es](https://opendata.aemet.es/centrodedescargas/inicio))
 
 ## Configuración
@@ -55,13 +53,11 @@ Las credenciales necesarias (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_KEY`, `DEPLOY
 ```
 generate.php              # Punto de entrada
 src/
-  Config/AppConfig.php    # Configuración centralizada (municipios, severidades, etc.)
+  Config/AppConfig.php    # Configuración centralizada (municipios, etc.)
   Logging/Logger.php      # Sistema de logging (consola + archivo)
-  Sources/AEMET.php       # Cliente API AEMET (alertas y previsiones)
-  Alert.php               # Modelo de datos: alerta
+  Sources/AEMET.php       # Cliente API AEMET (previsiones horaria y diaria)
   AEMETForecast.php       # Modelo de datos: previsión horaria
   AEMETDailyForecast.php  # Modelo de datos: previsión diaria
-  AlertCollector.php      # Colector de alertas
   ForecastCollector.php   # Colector de previsiones
   Cache.php               # Caché en disco (TTL 5 minutos)
   HtmlBuilder.php         # Generador de HTML
@@ -70,4 +66,4 @@ logs/                     # Logs de ejecución (excluidos del repositorio)
 
 ## Fuentes de datos
 
-- **AEMET OpenData** — previsiones y alertas meteorológicas oficiales de España.
+- **AEMET OpenData** — previsiones meteorológicas oficiales de España.
