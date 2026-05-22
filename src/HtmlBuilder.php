@@ -107,10 +107,27 @@ HTML;
         }
         
         $html = "\n";
+        $first = true;
         foreach ($forecasts as $municipality => $forecast) {
+            if (!$first) {
+                $html .= "<hr>\n";
+            }
+            $first = false;
+            $displayMode = $forecast['display_mode'] ?? 'hourly_daily';
+            $name = htmlspecialchars($forecast['name'] ?? $municipality, ENT_QUOTES, 'UTF-8');
             $html .= "<div class=\"forecast-section\" data-munic=\"{$municipality}\">\n";
-            $html .= self::renderForecast($forecast, false);
-            $html .= self::renderDailyForecast($forecast, false);
+
+            if ($displayMode === 'daily_only') {
+                $html .= "<h2>{$name}</h2>\n";
+                $html .= self::renderDailyForecast($forecast, false);
+            } else {
+                $html .= self::renderForecast($forecast, false);
+                if (!empty($forecast['daily_hours'])) {
+                    $html .= "<h3>Pr&oacute;ximos d&iacute;as</h3>\n";
+                    $html .= self::renderDailyForecast($forecast, false);
+                }
+            }
+
             $html .= "</div>\n";
         }
         return $html;
@@ -258,16 +275,23 @@ HTML;
         
         // Filtrar solo pronóstico futuro: si estamos a las 9:30, mostrar desde las 10:00
         // AEMET devuelve fechas en hora local España → comparar en Europe/Madrid
-        $now = new \DateTime('now', new \DateTimeZone('Europe/Madrid'));
+        $tz = new \DateTimeZone('Europe/Madrid');
+        $now = new \DateTime('now', $tz);
         $minutes = (int)$now->format('i');
-        
+
         if ($minutes > 0) {
             // Si hay minutos (ej: 9:30), mostrar desde la próxima hora (10:00)
             $now->add(new \DateInterval('PT1H'));
         }
-        
+
         $nextHourIso = $now->format('Y-m-d\TH:00:00');
         $filtered = array_filter($hours, fn($h) => $h->datetime >= $nextHourIso) ?: $hours;
+
+        // Limitar a hoy y mañana (previsión diaria cubre los días siguientes)
+        $todayDate = (new \DateTime('today', $tz))->format('Y-m-d');
+        $tomorrowDate = (new \DateTime('tomorrow', $tz))->format('Y-m-d');
+        $filtered = array_filter($filtered, fn($h) => in_array(substr($h->datetime, 0, 10), [$todayDate, $tomorrowDate]));
+        if (empty($filtered)) return '';
 
         $byDay = [];
         foreach ($filtered as $h) {

@@ -45,19 +45,14 @@ class ForecastCollector {
             $dailyCount = count($dailyForecast['days'] ?? []);
             Logger::debug("[ForecastCollector] {$dailyCount} días en previsión diaria para {$municipality}");
             
-            // Filtrar días que ya están cubiertos por la previsión horaria
-            // La previsión horaria suele tener 3 días (hoy, mañana, pasado mañana)
-            $lastHourlyDate = '';
-            if (!empty($forecast['hours'])) {
-                $lastHour = end($forecast['hours']);
-                $lastHourlyDate = substr($lastHour->datetime, 0, 10);
-            }
-            
+            // Incluir en daily_hours solo los días posteriores a mañana (hoy y mañana son horarios)
+            $tz = new \DateTimeZone('Europe/Madrid');
+            $tomorrowDate = (new \DateTime('tomorrow', $tz))->format('Y-m-d');
+
             $dailyHours = [];
             if (!empty($dailyForecast['days'])) {
                 foreach ($dailyForecast['days'] as $day) {
-                    // Solo incluir días posteriores a la previsión horaria
-                    if ($day->date > $lastHourlyDate) {
+                    if ($day->date > $tomorrowDate) {
                         $dailyHours[] = $day;
                     }
                 }
@@ -77,23 +72,64 @@ class ForecastCollector {
     }
 
     /**
+     * Obtener previsión solo diaria para un municipio (sin horaria)
+     */
+    public static function collectDailyOnly(string $municipality): array {
+        $code = AppConfig::getMunicipalityCode($municipality);
+        if (!$code) {
+            Logger::warning("[ForecastCollector] Unknown municipality: {$municipality}");
+            return ['name' => $municipality, 'province' => '', 'issued' => '', 'hours' => [], 'daily_hours' => [], 'display_mode' => 'daily_only'];
+        }
+
+        try {
+            $dailyForecast = AEMETSource::fetchDailyForecast($code);
+            $tz = new \DateTimeZone('Europe/Madrid');
+            $today = (new \DateTime('today', $tz))->format('Y-m-d');
+
+            $dailyHours = [];
+            foreach ($dailyForecast['days'] ?? [] as $day) {
+                if ($day->date >= $today) {
+                    $dailyHours[] = $day;
+                }
+            }
+
+            Logger::info("[ForecastCollector] " . count($dailyHours) . " días de previsión diaria para {$municipality}");
+
+            return [
+                'name' => $municipality,
+                'province' => $dailyForecast['province'] ?? '',
+                'issued' => $dailyForecast['issued'] ?? '',
+                'hours' => [],
+                'daily_hours' => $dailyHours,
+                'display_mode' => 'daily_only',
+            ];
+        } catch (\Exception $exc) {
+            Logger::error("[ForecastCollector] Error for {$municipality}: {$exc->getMessage()}");
+            return ['name' => $municipality, 'province' => '', 'issued' => '', 'hours' => [], 'daily_hours' => [], 'display_mode' => 'daily_only'];
+        }
+    }
+
+    /**
      * Obtener previsiones para múltiples municipios principales
-     * 
+     *
      * @return array Array de previsiones por municipio
      */
     public static function collectMultiple(): array {
-        $municipalities = AppConfig::DEFAULT_MUNICIPALITIES;
-
         $forecasts = [];
-        foreach ($municipalities as $municipality) {
-            $forecast = self::collect($municipality);
-            if (!empty($forecast['hours'])) {
-                // Usar el nombre solicitado como clave para mantener consistencia
-                // (aunque AEMET devuelva un nombre diferente en algunos casos)
-                $forecasts[$municipality] = $forecast;
+        foreach (AppConfig::DEFAULT_MUNICIPALITIES as $municipality) {
+            if (in_array($municipality, AppConfig::DAILY_ONLY_MUNICIPALITIES)) {
+                $forecast = self::collectDailyOnly($municipality);
+                if (!empty($forecast['daily_hours'])) {
+                    $forecasts[$municipality] = $forecast;
+                }
+            } else {
+                $forecast = self::collect($municipality);
+                $forecast['display_mode'] = 'hourly_daily';
+                if (!empty($forecast['hours'])) {
+                    $forecasts[$municipality] = $forecast;
+                }
             }
         }
-
         return $forecasts;
     }
 }
