@@ -21,6 +21,14 @@ class AppConfig {
     /** Municipios principales mostrados por defecto en la página */
     public const DEFAULT_MUNICIPALITIES = [
         'Chipiona',
+        'Sanlúcar de Barrameda',
+        'Rota',
+    ];
+
+    /** Municipios que muestran solo previsión diaria (sin horaria) */
+    public const DAILY_ONLY_MUNICIPALITIES = [
+        'Sanlúcar de Barrameda',
+        'Rota',
     ];
     
     // =========================================================================
