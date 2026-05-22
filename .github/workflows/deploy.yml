@@ -1,10 +1,8 @@
 name: Deploy Chipitiempo to VPS
-
 on:
   push:
     branches:
       - prod
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -26,8 +24,8 @@ jobs:
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'ENDSSH'
             set -e  # Exit on error
             
-            REPO_ROOT="/var/www/vhosts/chipitiempo"
-            DEPLOY_DIR="${REPO_ROOT}/httpdocs"
+            REPO_ROOT="/home/jjmontalban/web/chipitiempo"
+            DEPLOY_DIR="${REPO_ROOT}/public_html"
             
             echo "=========================================="
             echo "[$(date)] 🚀 Iniciando despliegue ChipiTiempo"
@@ -47,10 +45,10 @@ jobs:
             git fetch origin prod
             git reset --hard origin/prod
             
-            # Generar HTML (pasando ruta absoluta para asegurar que se guarde en httpdocs)
+            # Generar HTML (pasando ruta absoluta para asegurar que se guarde en public_html)
             echo ""
             echo "[$(date)] 🔧 Generando index.html..."
-            php generate.php "${DEPLOY_DIR}/index.html" 2>&1
+            php8.3 generate.php "${DEPLOY_DIR}/index.html" 2>&1
             
             # Verificar que el archivo se generó correctamente
             echo ""
@@ -69,9 +67,10 @@ jobs:
               exit 1
             fi
             
-            # Establecer permisos (importantes para Plesk)
+            # Establecer permisos (HestiaCP)
             echo ""
             echo "[$(date)] 🔐 Estableciendo permisos..."
+            chown -R jjmontalban:jjmontalban "${DEPLOY_DIR}"
             chmod 644 "${DEPLOY_DIR}/index.html"
             chmod 755 "${DEPLOY_DIR}"
             
@@ -86,8 +85,6 @@ jobs:
             # Información final
             echo ""
             echo "[$(date)] 📊 Verificación final:"
-            echo "[$(date)]   Inodes de index.html:"
-            ls -i "${DEPLOY_DIR}/index.html" "${REPO_ROOT}/index.html" 2>&1 || true
             echo "[$(date)]   Content-Length:"
             wc -c "${DEPLOY_DIR}/index.html" 2>&1 || true
             
