@@ -477,21 +477,24 @@ class AEMET {
             $datosUrl = $body['datos']; // La respuesta contiene una URL a los datos comprimidos
             $datosBody = json_decode(self::request($datosUrl), true);
 
-            if (!is_array($datosBody)) {
+            if (!is_array($datosBody) || empty($datosBody)) {
                 throw new \Exception("Invalid daily forecast JSON");
             }
 
+            // El endpoint diario, igual que el horario, devuelve un array
+            $data = $datosBody[0] ?? [];
+
             // Parsear datos de previsión diaria
-            $name = $datosBody['nombre'] ?? '';
-            $province = $datosBody['provincia'] ?? '';
-            $issued = $datosBody['elaboracion'] ?? '';
+            $name = $data['nombre'] ?? '';
+            $province = $data['provincia'] ?? '';
+            $issued = $data['elaboracion'] ?? '';
             $days = [];
 
-            if (!isset($datosBody['prediccion']['dia'])) {
+            if (!isset($data['prediccion']['dia'])) {
                 throw new \Exception("No daily forecast data found");
             }
 
-            foreach ($datosBody['prediccion']['dia'] as $dayData) {
+            foreach ($data['prediccion']['dia'] as $dayData) {
                 $date = $dayData['fecha'] ?? null;
                 if (!$date) continue;
 
@@ -558,7 +561,6 @@ class AEMET {
                     tempMin: $tempMin,
                     tempMax: $tempMax,
                     skyDescription: $skyDescription ?: null,
-                    skyCode: $skyCode,
                     precipProb: $precipProb,
                     windDir: $windDir,
                     windSpeed: $windSpeed
